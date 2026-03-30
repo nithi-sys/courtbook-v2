@@ -385,7 +385,9 @@ async function confirmBooking() {
 
 /* ---- BOOKINGS TABLE ---- */
 function renderBookingsTable() {
-  const bookings = (Store.get('bookings') || []).filter(b => b.status !== 'cancelled' && !b.isEvent);
+  const session = Auth.get();
+  const userEmail = session?.user?.email;
+  const bookings = (Store.get('bookings') || []).filter(b => b.status !== 'cancelled' && !b.isEvent && b.user_email === userEmail);
   const tbody = document.getElementById('bookingTable');
   document.getElementById('bookingCount').textContent = `${bookings.length} total`;
   document.getElementById('emptyState').style.display = bookings.length ? 'none' : 'block';
