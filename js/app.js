@@ -206,7 +206,7 @@ function joinWaitlist() {
   const player = document.getElementById('waitlistPlayer').value.trim(); if (!player) return;
   const court = (Store.get('courts') || []).find(c => c.id === selection.courtId), wl = Store.get('waitlist') || [];
   wl.push({ courtId: selection.courtId, courtName: court.name, player, date: selection.date, start: selection.start, end: selection.end, ts: Date.now() });
-  Store.set('waitlist', wl); closeWaitlist();
+  Store.setLocal('waitlist', wl); closeWaitlist();
   showAppAlert('warn', `${player} added to waitlist for ${court.name}.`);
 }
 function closeWaitlist() { document.getElementById('waitlistModal').style.display = 'none'; document.getElementById('waitlistPlayer').value = ''; }
