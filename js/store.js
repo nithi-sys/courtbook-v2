@@ -44,6 +44,65 @@ const Store = (() => {
     }
   };
 
+  const COURT_ADDONS = {
+    'Badminton': [
+      { id: 'badm_shuttle', name: 'Shuttlecock rental', price: 30, stock: 50, unit: 'per session' },
+      { id: 'badm_racket', name: 'Racket rental', price: 50, stock: 20, unit: 'per session' },
+      { id: 'badm_coach', name: 'Coaching session', price: 200, stock: 5, unit: 'per session' },
+      { id: 'badm_night', name: 'Night lighting access', price: 100, stock: 10, unit: 'per session' },
+      { id: 'badm_score', name: 'Score tracking', price: 20, stock: 10, unit: 'per session' }
+    ],
+    'Basketball': [
+      { id: 'bask_ball', name: 'Ball rental', price: 40, stock: 20, unit: 'per session' },
+      { id: 'bask_ref', name: 'Referee service', price: 300, stock: 5, unit: 'per session' },
+      { id: 'bask_bibs', name: 'Team jersey/bibs', price: 100, stock: 30, unit: 'per session' },
+      { id: 'bask_score', name: 'Scoreboard display', price: 50, stock: 5, unit: 'per session' },
+      { id: 'bask_match', name: 'Full match booking (5v5 mode)', price: 0, stock: 5, unit: 'per session' }
+    ],
+    'Squash': [
+      { id: 'sqsh_racket', name: 'Racket rental', price: 50, stock: 20, unit: 'per session' },
+      { id: 'sqsh_ball', name: 'Ball rental', price: 30, stock: 20, unit: 'per session' },
+      { id: 'sqsh_glass', name: 'Premium glass court option', price: 150, stock: 5, unit: 'per session' },
+      { id: 'sqsh_coach', name: 'Coaching session', price: 200, stock: 5, unit: 'per session' },
+      { id: 'sqsh_record', name: 'Match recording', price: 100, stock: 5, unit: 'per session' }
+    ],
+    'Table Tennis': [
+      { id: 'tt_paddle', name: 'Paddle rental', price: 30, stock: 20, unit: 'per session' },
+      { id: 'tt_ball', name: 'Ball set', price: 20, stock: 20, unit: 'per session' },
+      { id: 'tt_coach', name: 'Coaching session', price: 150, stock: 5, unit: 'per session' },
+      { id: 'tt_tourn', name: 'Tournament mode', price: 50, stock: 5, unit: 'per session' },
+      { id: 'tt_wall', name: 'Practice wall access', price: 0, stock: 5, unit: 'per session' }
+    ],
+    'Futsal': [
+      { id: 'futs_ball', name: 'Football rental', price: 50, stock: 20, unit: 'per session' },
+      { id: 'futs_gloves', name: 'Goalkeeper gloves', price: 40, stock: 10, unit: 'per session' },
+      { id: 'futs_bibs', name: 'Team bibs', price: 80, stock: 30, unit: 'per session' },
+      { id: 'futs_ref', name: 'Referee service', price: 250, stock: 5, unit: 'per session' },
+      { id: 'futs_record', name: 'Match recording/highlights', price: 150, stock: 5, unit: 'per session' }
+    ],
+    'Volleyball': [
+      { id: 'voll_ball', name: 'Ball rental', price: 40, stock: 20, unit: 'per session' },
+      { id: 'voll_net', name: 'Net height adjustment', price: 0, stock: 10, unit: 'per session' },
+      { id: 'voll_ref', name: 'Referee', price: 200, stock: 5, unit: 'per session' },
+      { id: 'voll_lineup', name: 'Team lineup setup', price: 0, stock: 10, unit: 'per session' },
+      { id: 'voll_tourn', name: 'Tournament mode', price: 100, stock: 5, unit: 'per session' }
+    ],
+    'Pickleball': [
+      { id: 'pick_paddle', name: 'Paddle rental', price: 40, stock: 20, unit: 'per session' },
+      { id: 'pick_ball', name: 'Ball rental', price: 20, stock: 20, unit: 'per session' },
+      { id: 'pick_coach', name: 'Beginner coaching', price: 150, stock: 5, unit: 'per session' },
+      { id: 'pick_doubles', name: 'Doubles match setup', price: 0, stock: 10, unit: 'per session' },
+      { id: 'pick_short', name: 'Short-duration booking option', price: 0, stock: 10, unit: 'per session' }
+    ],
+    'Box Cricket': [
+      { id: 'cric_kit', name: 'Bat and ball kit', price: 100, stock: 10, unit: 'per session' },
+      { id: 'cric_machine', name: 'Bowling machine', price: 300, stock: 2, unit: 'per session' },
+      { id: 'cric_umpire', name: 'Umpire service', price: 250, stock: 5, unit: 'per session' },
+      { id: 'cric_score', name: 'Scoreboard with stats', price: 50, stock: 5, unit: 'per session' },
+      { id: 'cric_record', name: 'Match recording', price: 150, stock: 5, unit: 'per session' }
+    ]
+  };
+
   /* ---- Local Memory Cache ---- */
   let cache = {
     courts: [],
@@ -214,6 +273,12 @@ const Store = (() => {
     return slots;
   }
 
+  /* ---- Get Equipment For Sport ---- */
+  function getEquipmentForSport(sport) {
+    if (sport && COURT_ADDONS[sport]) return COURT_ADDONS[sport];
+    return get('equipment') || [];
+  }
+
   /* ---- Cost calculation ---- */
   function calcCost(courtId, start, end, membershipId, equipmentIds, promoCode, players) {
     membershipId = membershipId || 'none';
@@ -223,11 +288,11 @@ const Store = (() => {
 
     const courts = get('courts') || [];
     const pricing = get('pricing') || DEFAULTS.pricing;
-    const equip = get('equipment') || [];
     const features = get('features') || DEFAULTS.features;
     const members = get('memberships') || DEFAULTS.memberships;
     const promos = get('promoCodes') || [];
     const court = courts.find(c => c.id == courtId);
+    const equip = getEquipmentForSport(court?.sport || '');
 
     if (!court) return { base: 0, peakSurcharge: 0, memberSaving: 0, equipCost: 0, promoSaving: 0, total: 0, durMins: 0 };
 
@@ -368,7 +433,7 @@ const Store = (() => {
     calcCost, checkConflict, getSlotPlayerCount,
     getPendingLock, acquireLock, releaseLock,
     applyPromo, addNotification,
-    generateSlots, mins, toTime, isOverlap,
+    generateSlots, mins, toTime, isOverlap, getEquipmentForSport,
     DEFAULTS
   };
 })();
