@@ -446,6 +446,7 @@ function setToday() { }
   if (filterDateInput) selection.date = filterDateInput.value;
   await Store.init();
   renderCourts();
+  renderBookingsTable();
 })();
 
 // Automatically refresh UI on background cross-tab or Supabase real-time updates
