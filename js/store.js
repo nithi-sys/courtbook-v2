@@ -275,7 +275,10 @@ const Store = (() => {
 
   /* ---- Get Equipment For Sport ---- */
   function getEquipmentForSport(sport) {
-    if (sport && COURT_ADDONS[sport]) return COURT_ADDONS[sport];
+    if (!sport) return get('equipment') || [];
+    const sportLower = sport.toLowerCase();
+    const matchKey = Object.keys(COURT_ADDONS).find(k => k.toLowerCase() === sportLower);
+    if (matchKey) return COURT_ADDONS[matchKey];
     return get('equipment') || [];
   }
 

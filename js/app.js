@@ -217,7 +217,7 @@ function renderAddOns() {
   if (!court || !court.active) { showAppAlert('error', 'This court is no longer active.'); return setStep(1); }
   const features = Store.get('features') || Store.DEFAULTS.features;
   const memberships = Store.get('memberships') || Store.DEFAULTS.memberships;
-  const equipment = Store.get('equipment') || [];
+  const equipment = Store.getEquipmentForSport(court.sport) || [];
   const bundles = Store.get('bundles') || [];
   const session = Auth.get();
   const userEmail = session?.user?.email || '';
@@ -279,7 +279,7 @@ function applyPromoCode() {
 function renderConfirm() {
   const courts = Store.get('courts') || [], court = courts.find(c => c.id === selection.courtId);
   if (!court || !court.active) { showAppAlert('error', 'This court is no longer active.'); return setStep(1); }
-  const equip = Store.get('equipment') || [], mems = Store.get('memberships') || Store.DEFAULTS.memberships;
+  const equip = Store.getEquipmentForSport(court.sport) || [], mems = Store.get('memberships') || Store.DEFAULTS.memberships;
   const mem = mems.find(m => m.id === selection.membership);
   const cost = Store.calcCost(selection.courtId, selection.start, selection.end, selection.membership, selection.equipment, selection.promoCode, selection.players);
   const features = Store.get('features') || Store.DEFAULTS.features;
