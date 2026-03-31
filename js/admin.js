@@ -568,7 +568,7 @@ async function addEvent() {
 
   const evId = 'e' + Date.now();
   events.push({ id: evId, name, courtIds, date, start, end, type });
-  Store.set('events', events);
+  Store.setLocal('events', events);
 
   ['eventName', 'eventDate', 'eventStart', 'eventEnd'].forEach(function (id) {
     document.getElementById(id).value = '';
@@ -600,11 +600,10 @@ async function deleteEvent(i) {
   }
 
   events.splice(i, 1);
-  Store.set('events', events);
+  Store.setLocal('events', events);
   renderEvents();
   adminAlert('Event removed and courts unblocked.');
 }
-
 /* ======== BOOKINGS & WAITLIST ======== */
 function renderBookings() {
   const bookings = (Store.get('bookings') || []).filter(function (b) {
@@ -773,12 +772,12 @@ function renderNotifications() {
 function deleteNotif(i) {
   var notifs = Store.get('notifications') || [];
   notifs.splice(i, 1);
-  Store.set('notifications', notifs);
+  Store.setLocal('notifications', notifs);
   renderNotifications();
 }
 
 function clearAllNotifs() {
-  Store.set('notifications', []);
+  Store.setLocal('notifications', []);
   renderNotifications();
   adminAlert('All notifications cleared.');
 }
