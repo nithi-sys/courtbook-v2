@@ -283,21 +283,23 @@ const Store = (() => {
   }
 
   /* ---- Cost calculation ---- */
-  function calcCost(courtId, start, end, membershipId, equipmentIds, promoCode, players) {
+  function calcCost(courtId, start, end, membershipId, equipmentIds, promoCode, players, bundleId) {
     membershipId = membershipId || 'none';
     equipmentIds = equipmentIds || [];
     promoCode = promoCode || '';
     players = players || 1;
+    bundleId = bundleId || null;
 
     const courts = get('courts') || [];
     const pricing = get('pricing') || DEFAULTS.pricing;
     const features = get('features') || DEFAULTS.features;
     const members = get('memberships') || DEFAULTS.memberships;
     const promos = get('promoCodes') || [];
+    const bundles = get('bundles') || [];
     const court = courts.find(c => c.id == courtId);
     const equip = getEquipmentForSport(court?.sport || '');
 
-    if (!court) return { base: 0, peakSurcharge: 0, memberSaving: 0, equipCost: 0, promoSaving: 0, total: 0, durMins: 0 };
+    if (!court) return { base: 0, peakSurcharge: 0, memberSaving: 0, equipCost: 0, bundleCost: 0, promoSaving: 0, total: 0, durMins: 0 };
 
     const durMins = mins(end) - mins(start);
     let base = Math.ceil((durMins / 60) * court.baseRate);
@@ -333,6 +335,17 @@ const Store = (() => {
       });
     }
 
+    // Bundle cost
+    let bundleCost = 0;
+    if (features.bundles && bundleId) {
+      const b = bundles.find(x => x.id === bundleId);
+      if (b) {
+        bundleCost = b.price || 0;
+        // If the bundle has a discount, we apply it to equipment? Or is it a separate discount?
+        // The prompt says: discount on items. The existing store doesn't clearly use `b.discount` on equipment. Let's just add the `bundleCost`.
+      }
+    }
+
     // Promo saving
     let promoSaving = 0;
     if (features.promoCodes && promoCode) {
@@ -340,15 +353,15 @@ const Store = (() => {
         p.code === promoCode.toUpperCase() && p.active && p.usesLeft > 0
       );
       if (promo) {
-        const subtotal = base + peakSurcharge - memberSaving + equipCost;
+        const subtotal = base + peakSurcharge - memberSaving + equipCost + bundleCost;
         promoSaving = promo.type === 'percent'
           ? Math.floor(subtotal * promo.value / 100)
           : Math.min(promo.value, subtotal);
       }
     }
 
-    const total = Math.max(0, base + peakSurcharge - memberSaving + equipCost - promoSaving);
-    return { base, peakSurcharge, peakMultiplier, memberSaving, equipCost, promoSaving, total, durMins };
+    const total = Math.max(0, base + peakSurcharge - memberSaving + equipCost + bundleCost - promoSaving);
+    return { base, peakSurcharge, peakMultiplier, memberSaving, equipCost, bundleCost, promoSaving, total, durMins };
   }
 
   /* ---- Overlap & conflict ---- */

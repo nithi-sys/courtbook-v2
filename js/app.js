@@ -180,7 +180,7 @@ document.getElementById('bookDate').addEventListener('change', () => renderSlotG
 function updateCostPreview() {
   const preview = document.getElementById('costPreview');
   if (!selection.start || !selection.end) { preview.classList.remove('show'); return; }
-  const cost = Store.calcCost(selection.courtId, selection.start, selection.end, selection.membership, selection.equipment, selection.promoCode, selection.players);
+  const cost = Store.calcCost(selection.courtId, selection.start, selection.end, selection.membership, selection.equipment, selection.promoCode, selection.players, selection.bundle);
   const peakText = cost.peakMultiplier > 1 ? ` (${cost.peakMultiplier}x Peak)` : '';
   document.getElementById('costValue').textContent = `Rs.${cost.total}${peakText}`;
   document.getElementById('costBreakdown').textContent = `${(cost.durMins / 60).toFixed(1)}hr · ${selection.players} player(s)`;
@@ -281,7 +281,7 @@ function renderConfirm() {
   if (!court || !court.active) { showAppAlert('error', 'This court is no longer active.'); return setStep(1); }
   const equip = Store.getEquipmentForSport(court.sport) || [], mems = Store.get('memberships') || Store.DEFAULTS.memberships;
   const mem = mems.find(m => m.id === selection.membership);
-  const cost = Store.calcCost(selection.courtId, selection.start, selection.end, selection.membership, selection.equipment, selection.promoCode, selection.players);
+  const cost = Store.calcCost(selection.courtId, selection.start, selection.end, selection.membership, selection.equipment, selection.promoCode, selection.players, selection.bundle);
   const features = Store.get('features') || Store.DEFAULTS.features;
 
   document.getElementById('confirmCourtName').textContent = court?.name || '';
@@ -294,8 +294,14 @@ function renderConfirm() {
   document.getElementById('confirmBase').textContent = `Rs.${cost.base}`;
   document.getElementById('confirmPeak').textContent = cost.peakSurcharge ? `+Rs.${cost.peakSurcharge}` : 'None';
   document.getElementById('confirmDiscount').textContent = cost.memberSaving ? `-Rs.${cost.memberSaving}` : 'None';
+  const bundles = Store.get('bundles') || [];
+  const selectedBundle = bundles.find(b => b.id === selection.bundle);
   document.getElementById('confirmEquip').textContent = selection.equipment.length
     ? selection.equipment.map(id => equip.find(e => e.id === id)?.name || id).join(', ') + ` (+Rs.${cost.equipCost})` : 'None';
+  
+  if (document.getElementById('confirmBundle')) {
+    document.getElementById('confirmBundle').textContent = selectedBundle ? `${selectedBundle.name} (+Rs.${cost.bundleCost})` : 'None';
+  }
   document.getElementById('confirmPromo').textContent = selection.promoCode && cost.promoSaving ? `${selection.promoCode} (-Rs.${cost.promoSaving})` : 'None';
   const peakText = cost.peakMultiplier > 1 ? ` (${cost.peakMultiplier}x Peak)` : '';
   document.getElementById('confirmTotal').textContent = `Rs.${cost.total}${peakText}`;
@@ -333,7 +339,7 @@ async function confirmBooking() {
 
   const cost = Store.calcCost(
     selection.courtId, selection.start, selection.end,
-    selection.membership, selection.equipment, selection.promoCode, selection.players
+    selection.membership, selection.equipment, selection.promoCode, selection.players, selection.bundle
   );
 
   // 1. Generate unique booking ID
@@ -379,7 +385,9 @@ async function confirmBooking() {
   document.getElementById('playerName').value = '';
   selection = { courtId: null, date: todayStr, start: '', end: '', membership: 'none', equipment: [], bundle: null, players: 1, promoCode: '' };
 
-  showAppAlert('success', `Booking confirmed for ${player}. Total: Rs.${cost.total}${peakText}.`);
+  showAppAlert('success', `Booking confirmed! Click here or go to My Bookings to Pay.`);
+  // Auto open the GPay QR code in a new tab for payment
+  window.open('assets/gpay-qr.png', '_blank');
   setStep(1);
 }
 
