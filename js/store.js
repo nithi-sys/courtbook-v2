@@ -325,8 +325,20 @@ const Store = (() => {
       const normalized = [];
       const seen = new Set();
       
-      // Step 1: Add formal events
+      // We will need to check bookings to purge ghost events
+      const evBookings = (cache.bookings || []).filter(b => b.isEvent || String(b.player).startsWith('[EVENT]'));
+      
+      // Step 1: Add formal events, purging deleted fallbacks
       (stored || []).forEach(function (ev) {
+        // If it's a fallback event (starts with ev_), verify it STILL exists in the bookings table
+        if (ev.id && String(ev.id).startsWith('ev_')) {
+          const stillExists = evBookings.some(b => 
+            String(b.player).replace(/\[EVENT\]\s*/i, '').trim() === ev.name && 
+            b.date === ev.date && b.start === ev.start && b.end === ev.end
+          );
+          if (!stillExists) return; // Purge it!
+        }
+
         const key = [ev.id || '', ev.name || '', ev.date || '', ev.start || '', ev.end || '', ev.type || '', (ev.courtIds || []).slice().sort().join(',')].join('|');
         if (!seen.has(key)) {
           seen.add(key);
@@ -337,7 +349,6 @@ const Store = (() => {
       // Step 2: Fallback reconstruct events from the bookings table for cross-device syncing
       // (This bypasses any Supabase API schema cache issues if the events table isn't readable)
       if (cache.bookings) {
-        const evBookings = cache.bookings.filter(b => b.isEvent || String(b.player).startsWith('[EVENT]'));
         evBookings.forEach(b => {
           const eName = String(b.player).replace(/\[EVENT\]\s*/i, '').trim();
           // Check if we already have this event from the formal list
