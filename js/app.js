@@ -402,7 +402,28 @@ function renderBookingsTable() {
   const tbody = document.getElementById('bookingTable');
   document.getElementById('bookingCount').textContent = `${bookings.length} total`;
   document.getElementById('emptyState').style.display = bookings.length ? 'none' : 'block';
-  tbody.innerHTML = bookings.map(b => `<tr>
+
+  const now = new Date();
+  const currentDate = now.toISOString().split('T')[0];
+  const currentTime = now.getHours() * 60 + now.getMinutes();
+
+  tbody.innerHTML = bookings.map(b => {
+    // Check if payment deadline has passed (30 minutes after slot start)
+    const slotDate = b.date;
+    const slotStartMins = Store.mins(b.start);
+    const isPastSlot = slotDate < currentDate || (slotDate === currentDate && currentTime > slotStartMins + 30);
+    const isPaymentOverdue = isPastSlot;
+
+    let payButtonHTML;
+    if (isPaymentOverdue) {
+      payButtonHTML = `<span class="btn btn-sm btn-overdue" title="Payment deadline passed (30 min after slot start)">Not Paid</span>`;
+    } else {
+      payButtonHTML = `<a href="assets/gpay-qr.png" target="_blank" class="btn btn-sm" style="background:#0f9d58;color:white;text-decoration:none" title="Scan GPay QR">Pay</a>`;
+    }
+
+    const rowClass = isPaymentOverdue ? 'style="background-color: #fef2f2;"' : '';
+
+    return `<tr ${rowClass}>
     <td><strong>${b.courtName}</strong></td><td>${b.sport}</td><td>${b.player}</td>
     <td>${b.membership !== 'none' ? `<span class="badge badge-accent">${b.membership}</span>` : '<span class="badge badge-neutral">None</span>'}</td>
     <td class="td-mono">${b.players || 1}</td>
@@ -411,9 +432,9 @@ function renderBookingsTable() {
     <td class="td-amount">Rs.${b.cost}</td>
     <td style="display:flex;gap:4px">
       <button class="btn btn-sm btn-danger" onclick="cancelBooking('${b.id}')">Cancel</button>
-      <a href="assets/gpay-qr.png" target="_blank" class="btn btn-sm" style="background:#0f9d58;color:white;text-decoration:none" title="Scan GPay QR">Pay</a>
+      ${payButtonHTML}
     </td>
-  </tr>`).join('');
+  </tr>`;}).join('');
 }
 
 async function cancelBooking(id) {
@@ -479,6 +500,11 @@ function setToday() { }
   await Store.init();
   renderCourts();
   renderBookingsTable();
+
+  // Auto-refresh bookings table every minute to update payment status
+  setInterval(() => {
+    renderBookingsTable();
+  }, 60000); // 60 seconds
 })();
 
 // Automatically refresh UI on background cross-tab or Supabase real-time updates
