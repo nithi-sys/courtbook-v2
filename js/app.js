@@ -90,14 +90,39 @@ function renderCourts() {
 function renderEventsList() {
   const now = new Date();
   const today = now.toISOString().split('T')[0];
-  const events = (Store.get('events') || []).filter(e => e.date >= today);
+
+  let events = (Store.get('events') || []);
+
+  // If no explicit events are stored, derive them from event bookings so user view works from booking-side data
+  if (!events.length) {
+    const eventBookings = (Store.get('bookings') || []).filter(b => b.isEvent);
+    const grouped = {};
+    eventBookings.forEach(b => {
+      const key = `${b.player}|${b.date}|${b.start}|${b.end}|${b.sport}`;
+      if (!grouped[key]) {
+        grouped[key] = {
+          id: 'ev_' + b.id,
+          name: String(b.player || '').replace(/^\[EVENT\]\s*/i, ''),
+          date: b.date,
+          start: b.start,
+          end: b.end,
+          type: b.sport || 'Event',
+          courtIds: []
+        };
+      }
+      if (b.courtId && !grouped[key].courtIds.includes(b.courtId)) grouped[key].courtIds.push(b.courtId);
+    });
+    events = Object.values(grouped);
+  }
+
+  events = events.filter(e => e.date >= today);
   const participants = Store.get('eventParticipants') || [];
 
   document.getElementById('eventCount').textContent = `${events.length} upcoming`;
 
   const html = events.length ? events.map(e => {
     const eventParticipants = participants.filter(p => p.eventId === e.id);
-    const courtNames = (Store.get('courts') || []).filter(c => e.courtIds.includes(c.id)).map(c => c.name).join(', ');
+    const courtNames = (Store.get('courts') || []).filter(c => (e.courtIds || []).includes(c.id)).map(c => c.name).join(', ');
     const canJoin = e.date >= today;
     return `<div class="card card-pad card-accent-top court-card" style="border-left:4px solid #6366f1;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
