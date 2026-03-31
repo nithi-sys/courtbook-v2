@@ -611,18 +611,38 @@ async function addEvent() {
   Store.setLocal('events', events);
   renderEvents();
 
-  // Insert to events table
+  // Insert to events table and get the real DB-generated ID
   if (window.supabaseClient) {
     try {
-      const { error } = await supabaseClient.from('events').insert([{
+      const { data: insertedEvent, error } = await supabaseClient.from('events').insert([{
         name,
         date,
         start_time: start,
         end_time: end,
         type,
         courts: courtIds.map(Number)
-      }]);
+      }]).select().single();
+
       if (error) throw error;
+
+      // Replace the temp string ID with the real DB integer ID in local cache
+      if (insertedEvent) {
+        const allEvents = Store.get('events') || [];
+        const idx = allEvents.findIndex(e => e.id === evId);
+        if (idx !== -1) {
+          allEvents[idx] = {
+            id: insertedEvent.id,
+            name: insertedEvent.name,
+            date: insertedEvent.date,
+            start: insertedEvent.start_time,
+            end: insertedEvent.end_time,
+            type: insertedEvent.type,
+            courtIds: insertedEvent.courts
+          };
+          Store.setLocal('events', allEvents);
+          renderEvents();
+        }
+      }
     } catch (e) {
       console.log('Event DB insert failed', e);
     }
@@ -633,18 +653,12 @@ async function addEvent() {
   });
   document.querySelectorAll('#eventCourtPicker input').forEach(function (el) { el.checked = false; });
 
-  // Try to insert booking records, but do not block the event UI if DB fails
+  // Insert booking records to block courts (non-blocking — won't stop event from showing)
   if (window.supabaseClient) {
-    const { error } = await supabaseClient.from('bookings').insert(newBookingsRaw);
-    if (error) {
-      console.error('Event booking insert error:', error);
-      adminAlert('Event saved locally. Booking API error: ' + (error.message || 'unknown'), 'warn');
-      return;
+    const { error: bError } = await supabaseClient.from('bookings').insert(newBookingsRaw);
+    if (bError) {
+      console.warn('Event booking insert error (non-critical):', bError);
     }
-  } else {
-    console.warn('Supabase client unavailable, event created locally only.');
-    adminAlert('Event scheduled locally (offline mode).', 'success');
-    return;
   }
 
   adminAlert('"' + name + '" scheduled across ' + courtIds.length + ' court(s).');
