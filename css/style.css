@@ -727,13 +727,6 @@ input:checked+.slider::before {
   color: white;
 }
 
-.btn-overdue {
-  background: var(--booked);
-  color: white;
-  cursor: not-allowed;
-  opacity: 0.8;
-}
-
 /* ---- TABLE ---- */
 .table-card {
   background: var(--white);
