@@ -255,20 +255,7 @@ const Store = (() => {
       if (cache.events && cache.events.length) return cache.events;
       const stored = JSON.parse(localStorage.getItem('cb_events')) || [];
       if (stored && stored.length) return stored;
-      // Fallback: derive events from event bookings if explicit events not present
-      const bookings = cache.bookings.length ? cache.bookings : (JSON.parse(localStorage.getItem('cb_bookings')) || []);
-      const evMap = {};
-      (bookings || []).filter(b => b.isEvent).forEach(b => {
-        const name = String(b.player || '').replace(/\[EVENT\]\s*/i, '').trim() || 'Untitled Event';
-        const key = `${name}|||${b.date}|||${b.start}|||${b.end}|||${b.sport || 'Event'}`;
-        if (!evMap[key]) {
-          evMap[key] = { id: 'ev_' + b.date + '_' + b.start + '_' + b.end + '_' + Math.random().toString(36).slice(2), name, courtIds: [b.courtId || b.court_id], date: b.date, start: b.start || b.start_time, end: b.end || b.end_time, type: b.sport || 'Event' };
-        } else if (b.courtId && !evMap[key].courtIds.includes(b.courtId)) {
-          evMap[key].courtIds.push(b.courtId);
-        }
-      });
-      const derived = Object.values(evMap);
-      if (derived.length) return derived;
+      // No fallback to derived event bookings: only admin-created events are displayed.
       return [];
     }
 

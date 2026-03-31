@@ -92,22 +92,8 @@ function renderEventsList() {
   const today = now.toISOString().split('T')[0];
 
   // Show only events that were created through Admin event scheduling.
-  // If no explicit events are stored yet, derive from event bookings (isEvent in bookings).
+  // No fallback from bookings is used here to avoid duplicate event cards.
   let events = (Store.get('events') || []).slice();
-
-  if (!events.length) {
-    const eventBookings = (Store.get('bookings') || []).filter(b => b.isEvent);
-    const byKey = {};
-    eventBookings.forEach(b => {
-      const name = String(b.player || '').replace(/\[EVENT\]\s*/i, '').trim() || 'Untitled Event';
-      const key = `${name}|||${b.date}|||${b.start}|||${b.end}|||${b.sport || 'Event'}`;
-      if (!byKey[key]) {
-        byKey[key] = { id: 'ev_' + b.date + '_' + b.start + '_' + b.end + '_' + Math.random().toString(36).slice(2), name, courtIds: [], date: b.date, start: b.start, end: b.end, type: b.sport || 'Event' };
-      }
-      if (b.courtId && !byKey[key].courtIds.includes(b.courtId)) byKey[key].courtIds.push(b.courtId);
-    });
-    events = Object.values(byKey);
-  }
 
   // Deduplicate by name/date/time/type to avoid duplicate cards from stale local state.
   events = events.filter((e, i, arr) => {
