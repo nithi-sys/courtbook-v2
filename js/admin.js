@@ -519,8 +519,26 @@ function renderEvents() {
 }
 
 async function addEvent() {
+  function normalizeDate(val) {
+    if (!val) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+    var parts = val.split('-');
+    if (parts.length === 3) {
+      var d = parts[0].padStart(2, '0');
+      var m = parts[1].padStart(2, '0');
+      var y = parts[2];
+      if (/^\d{4}$/.test(y)) return `${y}-${m}-${d}`;
+      if (/^\d{2}$/.test(y)) return `20${y}-${m}-${d}`;
+    }
+    try {
+      var dt = new Date(val);
+      if (!isNaN(dt)) return dt.toISOString().split('T')[0];
+    } catch (e) { }
+    return val;
+  }
+
   var name = v('eventName').trim();
-  var date = v('eventDate');
+  var date = normalizeDate(v('eventDate'));
   var start = v('eventStart');
   var end = v('eventEnd');
   var type = v('eventType');

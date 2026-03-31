@@ -243,7 +243,9 @@ const Store = (() => {
       const activeEvents = JSON.parse(localStorage.getItem('cb_events')) || [];
       return cache.bookings.filter(b => {
         if (!b.isEvent) return true;
-        const eName = b.player.replace('[EVENT] ', '');
+        // Keep event bookings if events list is empty (e.g. first load from supabase) so user portal blocks court and shows events correctly.
+        if (!activeEvents.length) return true;
+        const eName = String(b.player || '').replace(/\[EVENT\]\s*/i, '');
         return activeEvents.some(ev => ev.name === eName && ev.date === b.date);
       });
     }
@@ -251,7 +253,23 @@ const Store = (() => {
     if (key === 'notifications') return cache.notifications;
     if (key === 'events') {
       if (cache.events && cache.events.length) return cache.events;
-      return JSON.parse(localStorage.getItem('cb_events')) || [];
+      const stored = JSON.parse(localStorage.getItem('cb_events')) || [];
+      if (stored && stored.length) return stored;
+      // Fallback: derive events from event bookings if explicit events not present
+      const bookings = cache.bookings.length ? cache.bookings : (JSON.parse(localStorage.getItem('cb_bookings')) || []);
+      const evMap = {};
+      (bookings || []).filter(b => b.isEvent).forEach(b => {
+        const name = String(b.player || '').replace(/\[EVENT\]\s*/i, '').trim() || 'Untitled Event';
+        const key = `${name}|||${b.date}|||${b.start}|||${b.end}|||${b.sport || 'Event'}`;
+        if (!evMap[key]) {
+          evMap[key] = { id: 'ev_' + b.date + '_' + b.start + '_' + b.end + '_' + Math.random().toString(36).slice(2), name, courtIds: [b.courtId || b.court_id], date: b.date, start: b.start || b.start_time, end: b.end || b.end_time, type: b.sport || 'Event' };
+        } else if (b.courtId && !evMap[key].courtIds.includes(b.courtId)) {
+          evMap[key].courtIds.push(b.courtId);
+        }
+      });
+      const derived = Object.values(evMap);
+      if (derived.length) return derived;
+      return [];
     }
 
     if (key === 'eventParticipants') {

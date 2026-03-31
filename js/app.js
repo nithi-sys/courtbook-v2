@@ -91,31 +91,51 @@ function renderEventsList() {
   const now = new Date();
   const today = now.toISOString().split('T')[0];
 
-  let events = (Store.get('events') || []);
+  // Show only events that were created through Admin event scheduling.
+  // If no explicit events are stored yet, derive from event bookings (isEvent in bookings).
+  let events = (Store.get('events') || []).slice();
 
-  // If no explicit events are stored, derive them from event bookings so user view works from booking-side data
   if (!events.length) {
     const eventBookings = (Store.get('bookings') || []).filter(b => b.isEvent);
-    const grouped = {};
+    const byKey = {};
     eventBookings.forEach(b => {
-      const key = `${b.player}|${b.date}|${b.start}|${b.end}|${b.sport}`;
-      if (!grouped[key]) {
-        grouped[key] = {
-          id: 'ev_' + b.id,
-          name: String(b.player || '').replace(/^\[EVENT\]\s*/i, ''),
-          date: b.date,
-          start: b.start,
-          end: b.end,
-          type: b.sport || 'Event',
-          courtIds: []
-        };
+      const name = String(b.player || '').replace(/\[EVENT\]\s*/i, '').trim() || 'Untitled Event';
+      const key = `${name}|||${b.date}|||${b.start}|||${b.end}|||${b.sport || 'Event'}`;
+      if (!byKey[key]) {
+        byKey[key] = { id: 'ev_' + b.date + '_' + b.start + '_' + b.end + '_' + Math.random().toString(36).slice(2), name, courtIds: [], date: b.date, start: b.start, end: b.end, type: b.sport || 'Event' };
       }
-      if (b.courtId && !grouped[key].courtIds.includes(b.courtId)) grouped[key].courtIds.push(b.courtId);
+      if (b.courtId && !byKey[key].courtIds.includes(b.courtId)) byKey[key].courtIds.push(b.courtId);
     });
-    events = Object.values(grouped);
+    events = Object.values(byKey);
   }
 
-  events = events.filter(e => e.date >= today);
+  // Deduplicate by name/date/time/type to avoid duplicate cards from stale local state.
+  events = events.filter((e, i, arr) => {
+    return arr.findIndex(x => x.name === e.name && x.date === e.date && x.start === e.start && x.end === e.end && x.type === e.type) === i;
+  });
+
+  function normalizeDate(val) {
+    if (!val) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+    var parts = val.split('-');
+    if (parts.length === 3) {
+      // Support dd-mm-yyyy and d-m-yyyy from user input
+      var d = parts[0].padStart(2, '0');
+      var m = parts[1].padStart(2, '0');
+      var y = parts[2];
+      if (/^\d{4}$/.test(y)) return `${y}-${m}-${d}`;
+      if (/^\d{2}$/.test(y)) return `20${y}-${m}-${d}`;
+    }
+    try {
+      var dt = new Date(val);
+      if (!isNaN(dt)) return dt.toISOString().split('T')[0];
+    } catch (e) { }
+    return val;
+  }
+
+  events = events
+    .map(e => ({ ...e, date: normalizeDate(e.date) }))
+    .filter(e => e.date >= today);
   const participants = Store.get('eventParticipants') || [];
 
   document.getElementById('eventCount').textContent = `${events.length} upcoming`;
