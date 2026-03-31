@@ -383,13 +383,16 @@ async function confirmBooking() {
   Store.addNotification(`Booking confirmed: ${player} booked ${court.name} on ${selection.date} ${selection.start}–${selection.end}. Total: Rs.${cost.total}${peakText}.`, 'success');
 
   document.getElementById('playerName').value = '';
+  
+  // Show payment modal instead of auto-opening window
+  const modal = document.getElementById('paymentModal');
+  document.getElementById('modalPaymentAmount').textContent = `Rs.${cost.total}`;
+  modal.style.display = 'flex';
+  
+  // Store booking to reset after closing modal
   selection = { courtId: null, date: todayStr, start: '', end: '', membership: 'none', equipment: [], bundle: null, players: 1, promoCode: '' };
 
-  showAppAlert('success', `Booking confirmed! Click here or go to My Bookings to Pay.`);
-  // Auto open the GPay QR code in a new tab for payment
-  window.open('assets/gpay-qr.png', '_blank');
-  setStep(1);
-}
+  showAppAlert('success', `Booking confirmed! Scan the QR code to pay.`);
 
 /* ---- BOOKINGS TABLE ---- */
 function renderBookingsTable() {
@@ -447,6 +450,24 @@ function showAppAlert(type, msg) {
   el.className = `alert alert-${type} show`; el.textContent = msg;
   clearTimeout(showAppAlert._t); showAppAlert._t = setTimeout(() => el.classList.remove('show'), 4000);
 }
+
+/* ---- PAYMENT MODAL ---- */
+function closePaymentModal() {
+  document.getElementById('paymentModal').style.display = 'none';
+  setStep(1);
+}
+
+function openPaymentImage() {
+  window.open('assets/gpay-qr.png', '_blank');
+}
+
+// Close modal when clicking outside
+document.addEventListener('click', function(e) {
+  const modal = document.getElementById('paymentModal');
+  if (e.target === modal) {
+    closePaymentModal();
+  }
+});
 
 function setToday() { }
 
