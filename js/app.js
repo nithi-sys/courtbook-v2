@@ -25,6 +25,8 @@ function setStep(n) {
 /* ---- COURTS (fix 1) ---- */
 function renderCourts() {
   const courts = (Store.get('courts') || []).filter(c => c.active); // only active courts shown
+  console.log('Rendering courts:', courts.length, 'courts found');
+
   const bookings = Store.get('bookings') || [];
   const features = Store.get('features') || Store.DEFAULTS.features;
 

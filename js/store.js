@@ -133,11 +133,38 @@ const Store = (() => {
 
     // 1. Fetch Courts
     const { data: courts } = await supabaseClient.from('courts').select('*').order('id');
+    console.log('Fetched courts from database:', courts);
     if (courts) {
       cache.courts = courts.map(c => ({
         ...c,
         baseRate: c.base_rate, maxPlayers: c.max_players, teamSize: c.team_size
       }));
+      console.log('Mapped courts:', cache.courts);
+    }
+
+    // Add sample courts if none exist
+    if (!cache.courts || cache.courts.length === 0) {
+      console.log('No courts found, adding sample courts...');
+      const sampleCourts = [
+        { name: 'Court 1', sport: 'Badminton', base_rate: 150, max_players: 4, team_size: 2, active: true },
+        { name: 'Court 2', sport: 'Badminton', base_rate: 150, max_players: 4, team_size: 2, active: true },
+        { name: 'Court 3', sport: 'Tennis', base_rate: 200, max_players: 4, team_size: 2, active: true },
+        { name: 'Court 4', sport: 'Basketball', base_rate: 300, max_players: 10, team_size: 5, active: true }
+      ];
+
+      for (const court of sampleCourts) {
+        const { data, error } = await supabaseClient.from('courts').insert(court).select().single();
+        if (!error && data) {
+          cache.courts.push({
+            ...data,
+            baseRate: data.base_rate, maxPlayers: data.max_players, teamSize: data.team_size
+          });
+          console.log('Added sample court:', data.name);
+        } else {
+          console.error('Error adding sample court:', error);
+        }
+      }
+      console.log('Sample courts added successfully, total courts:', cache.courts.length);
     }
 
     // 2. Fetch Bookings (Active only for optimization)
