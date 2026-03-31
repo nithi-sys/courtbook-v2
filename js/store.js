@@ -192,7 +192,22 @@ const Store = (() => {
       }));
     }
 
-    // 5. Setup Realtime Subscriptions
+    // 5. Fetch Events from DB
+    const { data: dbEvents } = await supabaseClient.from('events').select('*');
+    if (dbEvents && dbEvents.length) {
+      cache.events = dbEvents.map(e => ({
+        id: e.id,
+        name: e.name,
+        date: e.date,
+        start: e.start_time,
+        end: e.end_time,
+        type: e.type,
+        courtIds: e.courts
+      }));
+      localStorage.setItem('cb_events', JSON.stringify(cache.events));
+    }
+
+    // 6. Setup Realtime Subscriptions
     supabaseClient.channel('custom-all-channel')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'courts' }, payload => {
         const mappedCourt = payload.new ? { ...payload.new, baseRate: payload.new.base_rate, maxPlayers: payload.new.max_players, teamSize: payload.new.team_size } : null;
@@ -219,6 +234,15 @@ const Store = (() => {
         cache.settings = { ...cache.settings, ...payload.new };
         const ev = new Event('storage', { bubbles: true }); ev.key = 'cb_settings'; window.dispatchEvent(ev);
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, payload => {
+        const mapEvent = e => e ? ({ id: e.id, name: e.name, date: e.date, start: e.start_time, end: e.end_time, type: e.type, courtIds: e.courts }) : null;
+        const mapped = mapEvent(payload.new);
+        if (payload.eventType === 'INSERT' && mapped && !cache.events.some(e => e.id === mapped.id)) cache.events.push(mapped);
+        if (payload.eventType === 'UPDATE' && mapped) cache.events = cache.events.map(e => e.id === payload.new.id ? mapped : e);
+        if (payload.eventType === 'DELETE') cache.events = cache.events.filter(e => e.id !== payload.old.id);
+        localStorage.setItem('cb_events', JSON.stringify(cache.events));
+        const ev = new Event('storage', { bubbles: true }); ev.key = 'cb_events'; window.dispatchEvent(ev);
+      })
       .subscribe();
 
     // Restore local-only transients
@@ -227,8 +251,11 @@ const Store = (() => {
       if (waitlist) localState.waitlist = waitlist;
       const notifs = JSON.parse(localStorage.getItem('cb_notifications'));
       if (notifs) cache.notifications = notifs;
-      const evs = JSON.parse(localStorage.getItem('cb_events'));
-      if (evs) cache.events = evs;
+      // Only restore events from localStorage if we did NOT get any from DB (avoids stale data overwrite)
+      if (!cache.events.length) {
+        const evs = JSON.parse(localStorage.getItem('cb_events'));
+        if (evs) cache.events = evs;
+      }
       const participants = JSON.parse(localStorage.getItem('cb_eventParticipants'));
       if (participants) cache.eventParticipants = participants;
       const locks = JSON.parse(localStorage.getItem('cb_pendingLocks'));
@@ -599,7 +626,7 @@ const Store = (() => {
     calcCost, checkConflict, getSlotPlayerCount,
     getPendingLock, acquireLock, releaseLock,
     applyPromo, addNotification,
-    addToWaitlist, promoteWaitlist,
+    addToWaitlist, promoteWaitlist, addEventParticipant,
     generateSlots, mins, toTime, isOverlap, getEquipmentForSport,
     DEFAULTS
   };
