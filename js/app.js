@@ -204,12 +204,28 @@ function proceedToAddOns() {
 }
 
 /* ---- WAITLIST ---- */
-function joinWaitlist() {
-  const player = document.getElementById('waitlistPlayer').value.trim(); if (!player) return;
-  const court = (Store.get('courts') || []).find(c => c.id === selection.courtId), wl = Store.get('waitlist') || [];
-  wl.push({ courtId: selection.courtId, courtName: court.name, player, date: selection.date, start: selection.start, end: selection.end, ts: Date.now() });
-  Store.setLocal('waitlist', wl); closeWaitlist();
-  showAppAlert('warn', `${player} added to waitlist for ${court.name}.`);
+async function joinWaitlist() {
+  const player = document.getElementById('waitlistPlayer').value.trim();
+  if (!player) return;
+  const court = (Store.get('courts') || []).find(c => c.id === selection.courtId);
+  const session = Auth.get();
+  const email = session?.user?.email || (player.replace(/\s+/g, '').toLowerCase() + '@example.com');
+  
+  // Calculate priority based on verified membership
+  const verified = Store.get('verifiedMembers') || [];
+  const userVerifiedMem = verified.find(v => v.email === email);
+  const memberships = Store.get('memberships') || Store.DEFAULTS.memberships;
+  const mem = memberships.find(m => m.id === (userVerifiedMem?.membershipId || 'none')) || memberships[0];
+  const priority = mem.priority || 0;
+
+  const res = await Store.addToWaitlist(selection.courtId, player, email, selection.date, selection.start, selection.end, mem.id, priority);
+  
+  if (res.success) {
+    closeWaitlist();
+    showAppAlert('warn', `${player} (Priority: ${priority}) added to waitlist for ${court.name}.`);
+  } else {
+    showAppAlert('error', `Failed to join waitlist: ${res.error}`);
+  }
 }
 function closeWaitlist() { document.getElementById('waitlistModal').style.display = 'none'; document.getElementById('waitlistPlayer').value = ''; }
 
@@ -432,30 +448,34 @@ function renderBookingsTable() {
 async function cancelBooking(id) {
   if (!confirm("Are you sure you want to cancel this booking?")) return;
 
+  // Get booking details before deletion for waitlist promotion
+  const bookings = Store.get('bookings') || [];
+  const booking = bookings.find(b => b.id === id);
+  if (!booking) return;
+
   const { error, count } = await supabaseClient
     .from('bookings')
     .delete({ count: 'exact' })
     .eq('id', id);
 
   if (error || count === 0) {
-    console.error("Delete Error:", error || "Row Level Security BLOCKED the delete.");
-    return showAppAlert('error', 'Cancellation failed. You may not have database permissions to delete this booking.');
+    console.error("Cancellation Error:", error);
+    showAppAlert("error", "Failed to cancel booking. It might have been already removed.");
+    return;
   }
 
-  let bookings = Store.get('bookings') || [];
-  const bIndex = bookings.findIndex(x => x.id === id);
+  // Release transient lock if any
+  Store.releaseLock(booking.courtId, booking.date, booking.start, booking.end);
 
-  if (bIndex > -1) {
-    const b = bookings[bIndex];
-    Store.releaseLock(b.courtId, b.date, b.start, b.end);
-    Store.addNotification(`Booking cancelled: ${b.player} — ${b.courtName} ${b.date} ${b.start}–${b.end}.`, 'warn');
-
-    // Remove from local memory ONLY if Supabase confirms it dropped
-    bookings.splice(bIndex, 1);
+  // Attempt to promote someone from waitlist
+  const promoted = await Store.promoteWaitlist(booking.courtId, booking.date, booking.start, booking.end);
+  if (promoted) {
+    Store.addNotification(`Waitlist Promotion: ${promoted.player} was automatically booked for ${booking.courtName} on ${booking.date} (${booking.start}-${booking.end}) after cancellation.`, 'success');
   }
 
-  // Update visually
-  renderBookingsTable(); renderCourts(); showAppAlert('warn', 'Booking cancelled and removed from system.');
+  showAppAlert('success', `Booking cancelled successfully.${promoted ? ' A waiting member has been automatically booked.' : ''}`);
+  renderBookingsTable();
+  if (step === 2) renderSlotGrid();
 }
 
 function showAppAlert(type, msg) {

@@ -107,6 +107,7 @@ const Store = (() => {
   let cache = {
     courts: [],
     bookings: [],
+    waitlist: [],
     events: [], // Storing events in local memory for now or pushing them as bookings
     notifications: [],
     settings: {
@@ -121,9 +122,8 @@ const Store = (() => {
     }
   };
 
-  /* Local only locks (Waitlist + Lock mechanism stays local for simplicity or can be migrated) */
+  /* Local only locks (Waitlist logic moved to DB, but transient lock mechanism stays local for simplicity) */
   let localState = {
-    waitlist: [],
     pendingLocks: {}
   };
 
@@ -182,7 +182,16 @@ const Store = (() => {
       cache.settings = { ...cache.settings, ...settingsRow };
     }
 
-    // 4. Setup Realtime Subscriptions
+    // 4. Fetch Waitlist
+    const { data: waitlist } = await supabaseClient.from('waitlist').select('*');
+    if (waitlist) {
+      cache.waitlist = waitlist.map(w => ({
+        ...w,
+        courtId: w.court_id, courtName: w.court_name, start: w.start_time, end: w.end_time
+      }));
+    }
+
+    // 5. Setup Realtime Subscriptions
     supabaseClient.channel('custom-all-channel')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'courts' }, payload => {
         const mappedCourt = payload.new ? { ...payload.new, baseRate: payload.new.base_rate, maxPlayers: payload.new.max_players, teamSize: payload.new.team_size } : null;
@@ -197,6 +206,13 @@ const Store = (() => {
         if (payload.eventType === 'UPDATE') cache.bookings = cache.bookings.map(b => b.id === payload.new.id ? mappedBooking : b);
         if (payload.eventType === 'DELETE') cache.bookings = cache.bookings.filter(b => b.id !== payload.old.id);
         const ev = new Event('storage', { bubbles: true }); ev.key = 'cb_bookings'; window.dispatchEvent(ev);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'waitlist' }, payload => {
+        const mappedWait = payload.new ? { ...payload.new, courtId: payload.new.court_id, courtName: payload.new.court_name, start: payload.new.start_time, end: payload.new.end_time } : null;
+        if (payload.eventType === 'INSERT' && !cache.waitlist.some(w => w.id === mappedWait.id)) cache.waitlist.push(mappedWait);
+        if (payload.eventType === 'UPDATE') cache.waitlist = cache.waitlist.map(w => w.id === payload.new.id ? mappedWait : w);
+        if (payload.eventType === 'DELETE') cache.waitlist = cache.waitlist.filter(w => w.id !== payload.old.id);
+        const ev = new Event('storage', { bubbles: true }); ev.key = 'cb_waitlist'; window.dispatchEvent(ev);
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'app_settings' }, payload => {
         cache.settings = { ...cache.settings, ...payload.new };
@@ -246,7 +262,7 @@ const Store = (() => {
     if (key === 'verifiedMembers') return cache.settings.verified_members;
 
     // Transients
-    if (key === 'waitlist') return localState.waitlist;
+    if (key === 'waitlist') return cache.waitlist;
     if (key === 'pendingLocks') return localState.pendingLocks;
 
     return null;
@@ -269,13 +285,80 @@ const Store = (() => {
 
   // Local/Transient Setters (for waitlist, notifications, etc)
   function setLocal(key, val) {
-    if (key === 'waitlist') localState.waitlist = val;
-    else if (key === 'pendingLocks') localState.pendingLocks = val;
+    if (key === 'pendingLocks') localState.pendingLocks = val;
     else if (key === 'notifications') cache.notifications = val;
     else if (key === 'events') cache.events = val;
 
     localStorage.setItem('cb_' + key, JSON.stringify(val));
     window.dispatchEvent(new Event('storage'));
+  }
+
+  /* ---- Sync Setters for Database tables ---- */
+  async function addToWaitlist(courtId, player, email, date, start, end, membership, priority) {
+    const court = (get('courts') || []).find(c => c.id == courtId);
+    if (!court) return;
+
+    const newWait = {
+      court_id: courtId,
+      court_name: court.name,
+      player,
+      user_email: email,
+      date,
+      start_time: start,
+      end_time: end,
+      membership,
+      priority
+    };
+
+    const { data, error } = await supabaseClient.from('waitlist').insert(newWait).select().single();
+    if (error) {
+      console.error('Waitlist add error:', error);
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  }
+
+  async function promoteWaitlist(courtId, date, start, end) {
+    const waitlist = get('waitlist') || [];
+    const candidates = waitlist
+      .filter(w => w.courtId == courtId && w.date === date && w.start === start && w.end === end)
+      .sort((a, b) => b.priority - a.priority || a.id - b.id); // Priority first, then FIFO
+
+    if (candidates.length === 0) return null;
+
+    const top = candidates[0];
+    const court = (get('courts') || []).find(c => c.id == top.courtId);
+
+    // Prepare booking
+    const cost = calcCost(top.courtId, top.start, top.end, top.membership, [], '', 1, null);
+    const newId = 'bk_' + Math.floor(Math.random() * 10000000);
+    const newBooking = {
+      id: newId,
+      court_id: top.courtId,
+      court_name: court.name,
+      sport: court.sport,
+      player: top.player,
+      user_email: top.user_email,
+      date: top.date,
+      start_time: top.start,
+      end_time: top.end,
+      membership: top.membership,
+      players: 1,
+      cost: cost.total,
+      status: 'confirmed',
+      equipment: []
+    };
+
+    const { error: bError } = await supabaseClient.from('bookings').insert(newBooking);
+    if (bError) {
+      console.error('Waitlist promotion error (booking):', bError);
+      return null;
+    }
+
+    // Remove from waitlist
+    await supabaseClient.from('waitlist').delete().eq('id', top.id);
+
+    return top;
   }
 
   /* ---- Helpers ---- */
@@ -476,6 +559,7 @@ const Store = (() => {
     calcCost, checkConflict, getSlotPlayerCount,
     getPendingLock, acquireLock, releaseLock,
     applyPromo, addNotification,
+    addToWaitlist, promoteWaitlist,
     generateSlots, mins, toTime, isOverlap, getEquipmentForSport,
     DEFAULTS
   };

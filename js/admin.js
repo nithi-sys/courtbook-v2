@@ -633,47 +633,53 @@ function renderBookings() {
   }).join('') || '<tr><td colspan="9"><div class="empty-state">No active bookings.</div></td></tr>';
 
   document.getElementById('waitlistCount').textContent = waitlist.length + ' waiting';
-  document.getElementById('waitlistBody').innerHTML = waitlist.map(function (w, i) {
+  document.getElementById('waitlistBody').innerHTML = waitlist.map(function (w) {
     return '<tr>' +
       '<td><strong>' + w.courtName + '</strong></td>' +
       '<td>' + w.player + '</td>' +
       '<td class="td-mono">' + w.date + '</td>' +
       '<td class="td-mono">' + w.start + '–' + w.end + '</td>' +
-      '<td><span class="badge badge-pending">Waiting</span></td>' +
-      '<td><button class="btn btn-sm btn-danger" onclick="removeWaitlist(' + i + ')">Remove</button></td></tr>';
+      '<td><span class=\"badge badge-accent\">Priority ' + (w.priority || 0) + '</span></td>' +
+      '<td><button class="btn btn-sm btn-danger" onclick="removeWaitlist(\'' + w.id + '\')">Remove</button></td></tr>';
   }).join('') || '<tr><td colspan="6"><div class="empty-state">Waitlist is empty.</div></td></tr>';
 }
 
 async function adminCancelBooking(id) {
   if (!confirm("Are you sure you want to cancel this booking?")) return;
 
-  var bookings = Store.get('bookings') || [];
-  var bIndex = bookings.findIndex(function (x) { return x.id === id; });
-  if (bIndex > -1) {
-    var b = bookings[bIndex];
-    Store.releaseLock(b.courtId, b.date, b.start, b.end);
+  const bookings = Store.get('bookings') || [];
+  const b = bookings.find(x => x.id === id);
+  if (!b) return;
 
-    // Delete entirely from database instead of soft-deleting
-    const { error, count } = await supabaseClient.from('bookings').delete({ count: 'exact' }).eq('id', id);
+  const { error, count } = await supabaseClient.from('bookings').delete({ count: 'exact' }).eq('id', id);
 
-    if (error || count === 0) {
-      console.error('Admin delete error:', error);
-      return adminAlert('Failed to delete booking: ' + (error?.message || 'RLS Blocked'), 'error');
-    }
-
-    // Remove from local memory
-    bookings.splice(bIndex, 1);
+  if (error || count === 0) {
+    console.error('Admin delete error:', error);
+    return adminAlert('Failed to delete booking: ' + (error?.message || 'RLS Blocked'), 'error');
   }
+
+  Store.releaseLock(b.courtId, b.date, b.start, b.end);
+
+  // Auto-promote waitlist
+  const promoted = await Store.promoteWaitlist(b.courtId, b.date, b.start, b.end);
+  if (promoted) {
+    adminAlert('Booking cancelled. ' + promoted.player + ' was automatically promoted from waitlist!');
+  } else {
+    adminAlert('Booking cancelled and removed from system.');
+  }
+
   renderBookings();
-  adminAlert('Booking cancelled and removed from system.');
 }
 
-function removeWaitlist(i) {
-  var wl = Store.get('waitlist') || [];
-  wl.splice(i, 1);
-  Store.set('waitlist', wl);
-  renderBookings();
+async function removeWaitlist(id) {
+  if (!confirm("Remove this entry from waitlist?")) return;
+  const { error } = await supabaseClient.from('waitlist').delete().eq('id', id);
+  if (error) {
+    console.error('Waitlist delete error:', error);
+    return adminAlert('Failed to remove from waitlist.', 'error');
+  }
   adminAlert('Removed from waitlist.');
+  renderBookings();
 }
 
 /* ======== ANALYTICS — fix 5 ======== */

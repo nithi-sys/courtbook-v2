@@ -189,3 +189,45 @@ values (
   '[]'
 ) on conflict (id) do nothing;
 
+-- Waitlist Table
+create table if not exists public.waitlist (
+  id          bigserial primary key,
+  court_id    bigint references public.courts(id) on delete cascade not null,
+  court_name  text not null,
+  player      text not null,
+  user_email  text not null,
+  date        date not null,
+  start_time  text not null,
+  end_time    text not null,
+  membership  text default 'none',
+  priority    integer default 0,
+  created_at  timestamptz default now()
+);
+
+-- Enable RLS
+alter table public.waitlist enable row level security;
+
+-- Policies
+drop policy if exists "Everyone can view waitlist" on public.waitlist;
+create policy "Everyone can view waitlist" on public.waitlist for select using (true);
+
+drop policy if exists "Users can insert own waitlist" on public.waitlist;
+create policy "Users can insert own waitlist" on public.waitlist for insert with check (
+  auth.email() = user_email or exists (select 1 from public.user_roles where user_id = auth.uid() and role = 'admin')
+);
+
+drop policy if exists "Admins can delete from waitlist" on public.waitlist;
+create policy "Admins can delete from waitlist" on public.waitlist for delete using (
+  exists (select 1 from public.user_roles where user_id = auth.uid() and role = 'admin')
+);
+
+-- Realtime
+do $$
+begin
+  begin
+    alter publication supabase_realtime add table public.waitlist;
+  exception when others then
+    null;
+  end;
+end $$;
+
