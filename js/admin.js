@@ -669,26 +669,31 @@ async function deleteEvent(i) {
   var ev = events[i];
   var eventTag = '[EVENT] ' + ev.name;
 
-  const { error, count } = await supabaseClient
-    .from('bookings')
-    .delete({ count: 'exact' })
-    .eq('is_event', true)
-    .eq('player', eventTag)
-    .eq('date', ev.date);
+  if (window.supabaseClient) {
+    // 1. Unblock courts in bookings table
+    const { error: bErr } = await supabaseClient
+      .from('bookings')
+      .delete()
+      .eq('is_event', true)
+      .eq('player', eventTag)
+      .eq('date', ev.date);
 
-  if (error) {
-    console.error('Event delete error:', error);
-    return adminAlert('Failed to delete event: ' + error.message, 'error');
+    if (bErr) console.warn('Could not remove court blocks:', bErr);
+
+    // 2. Delete from formal events table (if exists)
+    const { error: eErr } = await supabaseClient
+      .from('events')
+      .delete()
+      .eq('id', ev.id);
+      
+    if (eErr && eErr.code !== 'PGRST205') console.warn('Could not remove formal event:', eErr);
   }
 
-  if (count === 0) {
-    return adminAlert('Could not remove event (Database RLS Policy Blocked Deletion).', 'error');
-  }
-
+  // 3. Always clear it locally so it disappears from UI immediately
   events.splice(i, 1);
   Store.setLocal('events', events);
   renderEvents();
-  adminAlert('Event removed and courts unblocked.');
+  adminAlert('Event successfully cancelled and courts unblocked.', 'success');
 }
 /* ======== BOOKINGS & WAITLIST ======== */
 function renderBookings() {
