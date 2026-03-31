@@ -207,16 +207,20 @@ const Store = (() => {
       localStorage.setItem('cb_events', JSON.stringify(cache.events));
     }
 
-    // 6. Fetch Event Participants from DB
-    const { data: dbParticipants } = await supabaseClient.from('event_participants').select('*');
-    if (dbParticipants) {
-      cache.eventParticipants = dbParticipants.map(p => ({
-        id: p.id,
-        eventId: p.event_id,
-        userEmail: p.user_email,
-        player: p.player,
-        joinedAt: p.joined_at
-      }));
+    // 6. Fetch Event Participants from DB (safe — table may not exist yet)
+    try {
+      const { data: dbParticipants, error: partErr } = await supabaseClient.from('event_participants').select('*');
+      if (!partErr && dbParticipants) {
+        cache.eventParticipants = dbParticipants.map(p => ({
+          id: p.id,
+          eventId: p.event_id,
+          userEmail: p.user_email,
+          player: p.player,
+          joinedAt: p.joined_at
+        }));
+      }
+    } catch (e) {
+      console.log('event_participants table not ready yet:', e);
     }
 
     supabaseClient.channel('custom-all-channel')

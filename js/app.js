@@ -579,19 +579,40 @@ function showAppAlert(type, msg) {
 
 function setToday() { }
 
+
 // Init
 (async function initApp() {
-  Auth.injectUserBar();
   const filterDateInput = document.getElementById('filterDate');
   if (filterDateInput) selection.date = filterDateInput.value;
+
   await Store.init();
 
-  // Events are fetched and kept in sync by Store.init() and its realtime subscription.
+  // Safety-net: directly fetch events from DB if Store.init() didn't populate them
+  // (e.g. first load, session timing, or event_participants table not yet created)
+  if (window.supabaseClient && !Store.get('events').length) {
+    try {
+      const { data: evData, error: evErr } = await supabaseClient.from('events').select('*');
+      if (!evErr && evData && evData.length) {
+        Store.setLocal('events', evData.map(e => ({
+          id: e.id,
+          name: e.name,
+          date: e.date,
+          start: e.start_time,
+          end: e.end_time,
+          type: e.type,
+          courtIds: e.courts
+        })));
+      }
+    } catch (err) {
+      console.warn('Events fallback fetch failed:', err);
+    }
+  }
 
   renderCourts();
   renderEventsList();
   renderBookingsTable();
 })();
+
 
 // Automatically refresh UI on background cross-tab or Supabase real-time updates
 window.addEventListener('storage', (e) => {
