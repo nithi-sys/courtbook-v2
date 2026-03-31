@@ -399,20 +399,34 @@ function renderBookingsTable() {
   const userEmail = session?.user?.email;
   const bookings = (Store.get('bookings') || []).filter(b => b.status !== 'cancelled' && !b.isEvent && b.user_email === userEmail);
   const tbody = document.getElementById('bookingTable');
+  if (!tbody) return;
   document.getElementById('bookingCount').textContent = `${bookings.length} total`;
   document.getElementById('emptyState').style.display = bookings.length ? 'none' : 'block';
-  tbody.innerHTML = bookings.map(b => `<tr>
-    <td><strong>${b.courtName}</strong></td><td>${b.sport}</td><td>${b.player}</td>
-    <td>${b.membership !== 'none' ? `<span class="badge badge-accent">${b.membership}</span>` : '<span class="badge badge-neutral">None</span>'}</td>
-    <td class="td-mono">${b.players || 1}</td>
-    <td class="td-mono">${b.date}</td><td class="td-mono">${b.start}–${b.end}</td>
-    <td class="td-mono">${Store.mins(b.end) - Store.mins(b.start)} min</td>
-    <td class="td-amount">Rs.${b.cost}</td>
-    <td style="display:flex;gap:4px">
-      <button class="btn btn-sm btn-danger" onclick="cancelBooking('${b.id}')">Cancel</button>
-      <a href="assets/gpay-qr.png" target="_blank" class="btn btn-sm" style="background:#0f9d58;color:white;text-decoration:none" title="Scan GPay QR">Pay</a>
-    </td>
-  </tr>`).join('');
+
+  const now = new Date();
+  const tStr = now.toISOString().split('T')[0];
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+
+  tbody.innerHTML = bookings.map(b => {
+    const isPastGrace = (b.date < tStr) || (b.date === tStr && nowMins > Store.mins(b.end) + 30);
+    const unpaidLabel = isPastGrace ? `<div style="color:#dc2626;font-size:0.65rem;font-weight:700;margin-top:2px;text-align:center">NOT PAID YET</div>` : '';
+
+    return `<tr>
+      <td><strong>${b.courtName}</strong></td><td>${b.sport}</td><td>${b.player}</td>
+      <td>${b.membership !== 'none' ? `<span class="badge badge-accent">${b.membership}</span>` : '<span class="badge badge-neutral">None</span>'}</td>
+      <td class="td-mono">${b.players || 1}</td>
+      <td class="td-mono">${b.date}</td><td class="td-mono">${b.start}–${b.end}</td>
+      <td class="td-mono">${Store.mins(b.end) - Store.mins(b.start)} min</td>
+      <td class="td-amount">Rs.${b.cost}</td>
+      <td style="display:flex;flex-direction:column;gap:4px">
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-sm btn-danger" onclick="cancelBooking('${b.id}')">Cancel</button>
+          <a href="assets/gpay-qr.png" target="_blank" class="btn btn-sm" style="background:#0f9d58;color:white;text-decoration:none" title="Scan GPay QR">Pay</a>
+        </div>
+        ${unpaidLabel}
+      </td>
+    </tr>`;
+  }).join('');
 }
 
 async function cancelBooking(id) {

@@ -607,13 +607,19 @@ async function deleteEvent(i) {
 
 /* ======== BOOKINGS & WAITLIST ======== */
 function renderBookings() {
-  var bookings = (Store.get('bookings') || []).filter(function (b) {
+  const bookings = (Store.get('bookings') || []).filter(function (b) {
     return b.status !== 'cancelled' && !b.isEvent;
   });
-  var waitlist = Store.get('waitlist') || [];
+  const waitlist = Store.get('waitlist') || [];
+  const now = new Date();
+  const tStr = now.toISOString().split('T')[0];
+  const nowMins = now.getHours() * 60 + now.getMinutes();
 
   document.getElementById('adminBookingCount').textContent = bookings.length + ' active';
   document.getElementById('adminBookingsBody').innerHTML = bookings.map(function (b) {
+    const isPastGrace = (b.date < tStr) || (b.date === tStr && nowMins > Store.mins(b.end) + 30);
+    const unpaidText = isPastGrace ? '<div style="color:#dc2626;font-size:0.6rem;font-weight:700;margin-top:2px">NOT PAID YET</div>' : '';
+
     return '<tr>' +
       '<td><strong>' + b.courtName + '</strong></td>' +
       '<td>' + b.player + '</td>' +
@@ -622,7 +628,7 @@ function renderBookings() {
       '<td class="td-mono">' + b.date + '</td>' +
       '<td class="td-mono">' + b.start + '–' + b.end + '</td>' +
       '<td class="td-amount">Rs.' + b.cost + '</td>' +
-      '<td><span class="badge badge-available">Confirmed</span></td>' +
+      '<td><span class="badge badge-available">Confirmed</span>' + unpaidText + '</td>' +
       '<td><button class="btn btn-sm btn-danger" onclick="adminCancelBooking(\'' + b.id + '\')">Cancel</button></td></tr>';
   }).join('') || '<tr><td colspan="9"><div class="empty-state">No active bookings.</div></td></tr>';
 
