@@ -525,7 +525,7 @@ async function addEvent() {
   var end = v('eventEnd');
   var type = v('eventType');
   var courtIds = Array.from(document.querySelectorAll('#eventCourtPicker input:checked'))
-    .map(function (el) { return parseInt(el.value); });
+    .map(function (el) { return el.value; });
 
   if (!name || !date || !start || !end || !courtIds.length)
     return adminAlert('Fill all event fields and select at least one court.', 'error');
@@ -559,22 +559,31 @@ async function addEvent() {
     });
   });
 
-  const { error } = await supabaseClient.from('bookings').insert(newBookingsRaw);
-
-  if (error) {
-    console.error('Event insert error:', error);
-    return adminAlert('Failed to create event in database: ' + error.message, 'error');
-  }
-
   const evId = 'e' + Date.now();
-  events.push({ id: evId, name, courtIds, date, start, end, type });
+  const newEvent = { id: evId, name, courtIds, date, start, end, type };
+  events.push(newEvent);
   Store.setLocal('events', events);
+  renderEvents();
 
   ['eventName', 'eventDate', 'eventStart', 'eventEnd'].forEach(function (id) {
     document.getElementById(id).value = '';
   });
   document.querySelectorAll('#eventCourtPicker input').forEach(function (el) { el.checked = false; });
-  renderEvents();
+
+  // Try to insert booking records, but do not block the event UI if DB fails
+  if (window.supabaseClient) {
+    const { error } = await supabaseClient.from('bookings').insert(newBookingsRaw);
+    if (error) {
+      console.error('Event booking insert error:', error);
+      adminAlert('Event saved locally. Booking API error: ' + (error.message || 'unknown'), 'warn');
+      return;
+    }
+  } else {
+    console.warn('Supabase client unavailable, event created locally only.');
+    adminAlert('Event scheduled locally (offline mode).', 'success');
+    return;
+  }
+
   adminAlert('"' + name + '" scheduled across ' + courtIds.length + ' court(s).');
 }
 
