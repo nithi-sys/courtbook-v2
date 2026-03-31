@@ -553,6 +553,15 @@ async function addEvent() {
   var events = Store.get('events') || [];
   var courts = Store.get('courts') || [];
 
+  // Prevent same event duplicated in admin records
+  var duplicate = events.some(function (e) {
+    return e.name === name && e.date === date && e.start === start && e.end === end && e.type === type &&
+      ((e.courtIds || []).slice().sort().join(',') === courtIds.slice().sort().join(','));
+  });
+  if (duplicate) {
+    return adminAlert('This event already exists. Please edit or choose a different schedule.', 'error');
+  }
+
   const newBookingsRaw = [];
 
   // Block each selected court for this time range
@@ -582,6 +591,23 @@ async function addEvent() {
   events.push(newEvent);
   Store.setLocal('events', events);
   renderEvents();
+
+  // Insert to events table
+  if (window.supabaseClient) {
+    try {
+      const { error } = await supabaseClient.from('events').insert([{
+        name,
+        date,
+        start_time: start,
+        end_time: end,
+        type,
+        courts: courtIds.map(Number)
+      }]);
+      if (error) throw error;
+    } catch (e) {
+      console.log('Event DB insert failed', e);
+    }
+  }
 
   ['eventName', 'eventDate', 'eventStart', 'eventEnd'].forEach(function (id) {
     document.getElementById(id).value = '';

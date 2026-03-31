@@ -95,9 +95,13 @@ function renderEventsList() {
   // No fallback from bookings is used here to avoid duplicate event cards.
   let events = (Store.get('events') || []).slice();
 
-  // Deduplicate by name/date/time/type to avoid duplicate cards from stale local state.
-  events = events.filter((e, i, arr) => {
-    return arr.findIndex(x => x.name === e.name && x.date === e.date && x.start === e.start && x.end === e.end && x.type === e.type) === i;
+  // Strictly dedupe by id and properties, and ignore any stale / auto-generated duplicates.
+  const seen = new Set();
+  events = events.filter(e => {
+    const key = [e.id || '', e.name || '', e.date || '', e.start || '', e.end || '', e.type || '', (e.courtIds || []).slice().sort().join(',')].join('|');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
   });
 
   function normalizeDate(val) {
@@ -121,10 +125,10 @@ function renderEventsList() {
 
   events = events
     .map(e => ({ ...e, date: normalizeDate(e.date) }))
-    .filter(e => e.date >= today);
+    // .filter(e => e.date >= today); // Show all events, past and future
   const participants = Store.get('eventParticipants') || [];
 
-  document.getElementById('eventCount').textContent = `${events.length} upcoming`;
+  document.getElementById('eventCount').textContent = `${events.length} events`;
 
   const html = events.length ? events.map(e => {
     const eventParticipants = participants.filter(p => p.eventId === e.id);
@@ -580,6 +584,28 @@ function setToday() { }
   const filterDateInput = document.getElementById('filterDate');
   if (filterDateInput) selection.date = filterDateInput.value;
   await Store.init();
+
+  // Fetch events from DB if available
+  if (window.supabaseClient) {
+    try {
+      const { data: dbEvents, error } = await supabaseClient.from('events').select('*');
+      if (!error && dbEvents) {
+        const events = dbEvents.map(e => ({
+          id: e.id,
+          name: e.name,
+          date: e.date,
+          startTime: e.start_time,
+          endTime: e.end_time,
+          type: e.type,
+          courts: e.courts
+        }));
+        Store.setLocal('events', events);
+      }
+    } catch (e) {
+      console.log('Fetch events failed', e);
+    }
+  }
+
   renderCourts();
   renderEventsList();
   renderBookingsTable();

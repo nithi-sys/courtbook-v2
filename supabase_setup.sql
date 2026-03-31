@@ -231,3 +231,47 @@ begin
   end;
 end $$;
 
+-- Events Table
+create table if not exists public.events (
+  id          bigserial primary key,
+  name        text not null,
+  date        date not null,
+  start_time  time not null,
+  end_time    time not null,
+  type        text not null,
+  courts      integer[] not null,
+  created_at  timestamptz default now()
+);
+
+-- Enable RLS
+alter table public.events enable row level security;
+
+-- Policies
+drop policy if exists "Everyone can view events" on public.events;
+create policy "Everyone can view events" on public.events for select using (true);
+
+drop policy if exists "Admins can insert events" on public.events;
+create policy "Admins can insert events" on public.events for insert with check (
+  exists (select 1 from public.user_roles where user_id = auth.uid() and role = 'admin')
+);
+
+drop policy if exists "Admins can update events" on public.events;
+create policy "Admins can update events" on public.events for update using (
+  exists (select 1 from public.user_roles where user_id = auth.uid() and role = 'admin')
+);
+
+drop policy if exists "Admins can delete events" on public.events;
+create policy "Admins can delete events" on public.events for delete using (
+  exists (select 1 from public.user_roles where user_id = auth.uid() and role = 'admin')
+);
+
+-- Realtime
+do $$
+begin
+  begin
+    alter publication supabase_realtime add table public.events;
+  exception when others then
+    null;
+  end;
+end $$;
+

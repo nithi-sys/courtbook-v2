@@ -252,11 +252,19 @@ const Store = (() => {
     if (key === 'auth') return Auth.get();
     if (key === 'notifications') return cache.notifications;
     if (key === 'events') {
-      if (cache.events && cache.events.length) return cache.events;
-      const stored = JSON.parse(localStorage.getItem('cb_events')) || [];
-      if (stored && stored.length) return stored;
-      // No fallback to derived event bookings: only admin-created events are displayed.
-      return [];
+      const stored = cache.events && cache.events.length ? cache.events : (JSON.parse(localStorage.getItem('cb_events')) || []);
+      const normalized = [];
+      const seen = new Set();
+      (stored || []).forEach(function (ev) {
+        const key = [ev.id || '', ev.name || '', ev.date || '', ev.start || '', ev.end || '', ev.type || '', (ev.courtIds || []).slice().sort().join(',')].join('|');
+        if (!seen.has(key)) {
+          seen.add(key);
+          normalized.push(ev);
+        }
+      });
+      cache.events = normalized;
+      localStorage.setItem('cb_events', JSON.stringify(normalized));
+      return normalized;
     }
 
     if (key === 'eventParticipants') {
