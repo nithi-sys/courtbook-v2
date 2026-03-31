@@ -233,14 +233,28 @@ const Store = (() => {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, payload => {
         const mappedBooking = payload.new ? { ...payload.new, courtId: payload.new.court_id, courtName: payload.new.court_name, start: payload.new.start_time, end: payload.new.end_time, isEvent: payload.new.is_event } : null;
-        if (payload.eventType === 'INSERT' && !cache.bookings.some(b => b.id === mappedBooking.id)) cache.bookings.push(mappedBooking);
+        if (payload.eventType === 'INSERT' && !cache.bookings.some(b => b.id === mappedBooking.id)) {
+          cache.bookings.push(mappedBooking);
+          if (!mappedBooking.isEvent && Auth.isAdmin()) {
+            const msg = `New Booking: ${mappedBooking.player} booked ${mappedBooking.courtName} for ${mappedBooking.date} at ${mappedBooking.start}`;
+            addNotification(msg, 'success');
+            if (typeof adminAlert === 'function') adminAlert(msg, 'success');
+          }
+        }
         if (payload.eventType === 'UPDATE') cache.bookings = cache.bookings.map(b => b.id === payload.new.id ? mappedBooking : b);
         if (payload.eventType === 'DELETE') cache.bookings = cache.bookings.filter(b => b.id !== payload.old.id);
         const ev = new Event('storage', { bubbles: true }); ev.key = 'cb_bookings'; window.dispatchEvent(ev);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'waitlist' }, payload => {
         const mappedWait = payload.new ? { ...payload.new, courtId: payload.new.court_id, courtName: payload.new.court_name, start: payload.new.start_time, end: payload.new.end_time } : null;
-        if (payload.eventType === 'INSERT' && !cache.waitlist.some(w => w.id === mappedWait.id)) cache.waitlist.push(mappedWait);
+        if (payload.eventType === 'INSERT' && !cache.waitlist.some(w => w.id === mappedWait.id)) {
+          cache.waitlist.push(mappedWait);
+          if (Auth.isAdmin()) {
+            const msg = `Waitlist: ${mappedWait.player} joined for ${mappedWait.courtName} on ${mappedWait.date} at ${mappedWait.start}`;
+            addNotification(msg, 'warn');
+            if (typeof adminAlert === 'function') adminAlert(msg, 'warn');
+          }
+        }
         if (payload.eventType === 'UPDATE') cache.waitlist = cache.waitlist.map(w => w.id === payload.new.id ? mappedWait : w);
         if (payload.eventType === 'DELETE') cache.waitlist = cache.waitlist.filter(w => w.id !== payload.old.id);
         const ev = new Event('storage', { bubbles: true }); ev.key = 'cb_waitlist'; window.dispatchEvent(ev);
@@ -259,10 +273,16 @@ const Store = (() => {
         const ev = new Event('storage', { bubbles: true }); ev.key = 'cb_events'; window.dispatchEvent(ev);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'event_participants' }, payload => {
-        const mapPart = p => p ? ({ id: p.id, eventId: p.event_id, userEmail: p.user_email, player: p.player, joinedAt: p.joined_at }) : null;
-        const mapped = mapPart(payload.new);
-        if (payload.eventType === 'INSERT' && mapped && !cache.eventParticipants.some(p => p.id === mapped.id)) cache.eventParticipants.push(mapped);
-        if (payload.eventType === 'DELETE') cache.eventParticipants = cache.eventParticipants.filter(p => p.id !== payload.old.id);
+        const p = payload.new ? { id: payload.new.id, eventId: payload.new.event_id, userEmail: payload.new.user_email, player: payload.new.player, joinedAt: payload.new.joined_at } : null;
+        if (payload.eventType === 'INSERT' && p && !cache.eventParticipants.some(x => x.id === p.id)) {
+          cache.eventParticipants.push(p);
+          if (Auth.isAdmin()) {
+            const msg = `New Participant: ${p.player} joined event ID #${p.eventId}`;
+            addNotification(msg, 'info');
+            if (typeof adminAlert === 'function') adminAlert(msg, 'info');
+          }
+        }
+        if (payload.eventType === 'DELETE') cache.eventParticipants = cache.eventParticipants.filter(x => x.id !== payload.old.id);
         const ev = new Event('storage', { bubbles: true }); ev.key = 'cb_eventParticipants'; window.dispatchEvent(ev);
       })
       .subscribe();
@@ -304,6 +324,8 @@ const Store = (() => {
       const stored = cache.events && cache.events.length ? cache.events : (JSON.parse(localStorage.getItem('cb_events')) || []);
       const normalized = [];
       const seen = new Set();
+      
+      // Step 1: Add formal events
       (stored || []).forEach(function (ev) {
         const key = [ev.id || '', ev.name || '', ev.date || '', ev.start || '', ev.end || '', ev.type || '', (ev.courtIds || []).slice().sort().join(',')].join('|');
         if (!seen.has(key)) {
@@ -311,6 +333,42 @@ const Store = (() => {
           normalized.push(ev);
         }
       });
+
+      // Step 2: Fallback reconstruct events from the bookings table for cross-device syncing
+      // (This bypasses any Supabase API schema cache issues if the events table isn't readable)
+      if (cache.bookings) {
+        const evBookings = cache.bookings.filter(b => b.isEvent || String(b.player).startsWith('[EVENT]'));
+        evBookings.forEach(b => {
+          const eName = String(b.player).replace(/\[EVENT\]\s*/i, '').trim();
+          // Check if we already have this event from the formal list
+          const exists = normalized.some(e => e.name === eName && e.date === b.date && e.start === b.start && e.end === b.end);
+          
+          if (!exists) {
+            // Find all bookings for this specific event to group courts
+            const matchingBookings = evBookings.filter(xb => 
+              String(xb.player).replace(/\[EVENT\]\s*/i, '').trim() === eName && 
+              xb.date === b.date && xb.start === b.start && xb.end === b.end
+            );
+            
+            const courtIds = [...new Set(matchingBookings.map(xb => xb.courtId))];
+            
+            normalized.push({
+              id: 'ev_' + b.date + '_' + eName.replace(/\s+/g, ''),
+              name: eName,
+              date: b.date,
+              start: b.start,
+              end: b.end,
+              type: b.sport || 'Event',
+              courtIds: courtIds
+            });
+            
+            // Mark as seen so we don't process duplicate bookings for the same event setup
+            const key = ['ev_' + b.date + '_' + eName.replace(/\s+/g, ''), eName, b.date, b.start, b.end, b.sport || 'Event', courtIds.slice().sort().join(',')].join('|');
+            seen.add(key);
+          }
+        });
+      }
+
       cache.events = normalized;
       localStorage.setItem('cb_events', JSON.stringify(normalized));
       return normalized;
@@ -658,6 +716,18 @@ const Store = (() => {
     notifs.unshift({ id: 'n' + Date.now(), msg, type, ts: Date.now(), read: false });
     setLocal('notifications', notifs.slice(0, 50));
   }
+
+  // Internal sync: when another tab updates localStorage (because of an offline action or fallback), sync our in-memory cache
+  window.addEventListener('storage', e => {
+    if (!e || !e.key || !e.key.startsWith('cb_')) return;
+    try {
+      const val = JSON.parse(e.newValue);
+      const k = e.key.replace('cb_', '');
+      if (k === 'events') cache.events = val;
+      else if (k === 'eventParticipants') cache.eventParticipants = val;
+      else if (k === 'notifications') cache.notifications = val;
+    } catch (err) {}
+  });
 
   return {
     init, get, updateSetting, setLocal,
