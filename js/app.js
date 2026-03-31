@@ -87,6 +87,53 @@ function renderCourts() {
   // stats removed from UI
 }
 
+function renderEventsList() {
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+  const events = (Store.get('events') || []).filter(e => e.date >= today);
+  const participants = Store.get('eventParticipants') || [];
+
+  document.getElementById('eventCount').textContent = `${events.length} upcoming`;
+
+  const html = events.length ? events.map(e => {
+    const eventParticipants = participants.filter(p => p.eventId === e.id);
+    const courtNames = (Store.get('courts') || []).filter(c => e.courtIds.includes(c.id)).map(c => c.name).join(', ');
+    const canJoin = e.date >= today;
+    return `<div class="card card-pad card-accent-top court-card" style="border-left:4px solid #6366f1;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
+        <div><strong>${e.name}</strong> <span class="badge badge-accent">${e.type}</span></div>
+        <span class="badge badge-neutral" style="font-size:0.7rem">${eventParticipants.length} joined</span>
+      </div>
+      <div style="font-size:0.85rem;margin-bottom:6px">Courts: ${courtNames || 'N/A'}</div>
+      <div style="font-size:0.85rem;margin-bottom:6px">${e.date} · ${e.start}–${e.end}</div>
+      <button class="btn btn-secondary btn-full" ${canJoin ? '' : 'disabled'} onclick="joinEvent('${e.id}')">${canJoin ? 'Participate' : 'Event Passed'}</button>
+    </div>`;
+  }).join('') : '<div class="empty-state" style="grid-column:1/-1">No upcoming events.</div>';
+
+  const eventsGrid = document.getElementById('eventsGrid');
+  if (eventsGrid) eventsGrid.innerHTML = html;
+}
+
+function joinEvent(eventId) {
+  const ev = (Store.get('events') || []).find(e => e.id === eventId);
+  if (!ev) return showAppAlert('error', 'Event not found.');
+
+  const today = new Date().toISOString().split('T')[0];
+  if (ev.date < today) return showAppAlert('error', 'This event has already passed.');
+
+  const auth = Auth.get();
+  const user = auth?.user; 
+  const userEmail = user?.email || prompt('Enter your email to participate:').trim();
+  const playerName = user?.email ? user.email.split('@')[0] : prompt('Enter your name:').trim();
+  if (!userEmail || !playerName) return showAppAlert('error', 'Name and email are required to join.');
+
+  const res = Store.addEventParticipant(eventId, { userEmail, player: playerName });
+  if (!res.success) return showAppAlert('error', res.error || 'Could not join event.');
+
+  showAppAlert('success', `You are now participating in ${ev.name}.`);
+  renderEventsList();
+}
+
 function isCurrentlyBusy(courtId, bookings) {
   const now = today.getHours() * 60 + today.getMinutes();
   return bookings.some(b => b.courtId == courtId && b.date === todayStr && b.status !== 'cancelled' && Store.mins(b.start) <= now && now < Store.mins(b.end));
@@ -493,6 +540,7 @@ function setToday() { }
   if (filterDateInput) selection.date = filterDateInput.value;
   await Store.init();
   renderCourts();
+  renderEventsList();
   renderBookingsTable();
 })();
 
@@ -510,10 +558,11 @@ window.addEventListener('storage', (e) => {
     else if (step === 4) renderConfirm();
   }
 
-  if (e.key === 'cb_bookings' || e.key === 'cb_events') {
+  if (e.key === 'cb_bookings' || e.key === 'cb_events' || e.key === 'cb_eventParticipants') {
     if (step === 1) renderCourts();
     else if (step === 2) renderSlotGrid();
     renderBookingsTable();
+    renderEventsList();
   }
 
   if (e.key === 'cb_timeSlots' && step === 2) renderSlotGrid();

@@ -109,6 +109,7 @@ const Store = (() => {
     bookings: [],
     waitlist: [],
     events: [], // Storing events in local memory for now or pushing them as bookings
+    eventParticipants: [],
     notifications: [],
     settings: {
       features: DEFAULTS.features,
@@ -228,6 +229,8 @@ const Store = (() => {
       if (notifs) cache.notifications = notifs;
       const evs = JSON.parse(localStorage.getItem('cb_events'));
       if (evs) cache.events = evs;
+      const participants = JSON.parse(localStorage.getItem('cb_eventParticipants'));
+      if (participants) cache.eventParticipants = participants;
       const locks = JSON.parse(localStorage.getItem('cb_pendingLocks'));
       if (locks) localState.pendingLocks = locks;
     } catch (e) { }
@@ -249,6 +252,11 @@ const Store = (() => {
     if (key === 'events') {
       if (cache.events && cache.events.length) return cache.events;
       return JSON.parse(localStorage.getItem('cb_events')) || [];
+    }
+
+    if (key === 'eventParticipants') {
+      if (cache.eventParticipants && cache.eventParticipants.length) return cache.eventParticipants;
+      return JSON.parse(localStorage.getItem('cb_eventParticipants')) || [];
     }
 
     // Settings mappings
@@ -288,6 +296,7 @@ const Store = (() => {
     if (key === 'pendingLocks') localState.pendingLocks = val;
     else if (key === 'notifications') cache.notifications = val;
     else if (key === 'events') cache.events = val;
+    else if (key === 'eventParticipants') cache.eventParticipants = val;
 
     localStorage.setItem('cb_' + key, JSON.stringify(val));
     window.dispatchEvent(new Event('storage'));
@@ -315,6 +324,21 @@ const Store = (() => {
       console.error('Waitlist add error:', error);
       return { success: false, error: error.message };
     }
+    return { success: true };
+  }
+
+  function addEventParticipant(eventId, participant) {
+    var participants = get('eventParticipants') || [];
+    if (participants.find(p => p.eventId === eventId && p.userEmail === participant.userEmail)) {
+      return { success: false, error: 'Already participating.' };
+    }
+    participants.push({
+      eventId,
+      userEmail: participant.userEmail,
+      player: participant.player,
+      joinedAt: new Date().toISOString()
+    });
+    setLocal('eventParticipants', participants);
     return { success: true };
   }
 
