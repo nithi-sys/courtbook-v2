@@ -297,6 +297,7 @@ const Store = (() => {
     else if (key === 'notifications') cache.notifications = val;
     else if (key === 'events') cache.events = val;
     else if (key === 'eventParticipants') cache.eventParticipants = val;
+    else if (key === 'bookings') cache.bookings = val;
 
     localStorage.setItem('cb_' + key, JSON.stringify(val));
     window.dispatchEvent(new Event('storage'));

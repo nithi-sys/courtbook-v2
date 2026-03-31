@@ -656,13 +656,20 @@ async function adminCancelBooking(id) {
   if (!confirm("Are you sure you want to cancel this booking?")) return;
 
   const bookings = Store.get('bookings') || [];
-  const b = bookings.find(x => x.id === id);
+  const b = bookings.find(x => String(x.id) === String(id));
   if (!b) return;
+
+  // Optimistic local update
+  const remaining = bookings.filter(x => String(x.id) !== String(id));
+  Store.setLocal('bookings', remaining);
+  renderBookings();
 
   const { error, count } = await supabaseClient.from('bookings').delete({ count: 'exact' }).eq('id', id);
 
   if (error || count === 0) {
     console.error('Admin delete error:', error);
+    Store.setLocal('bookings', bookings);
+    renderBookings();
     return adminAlert('Failed to delete booking: ' + (error?.message || 'RLS Blocked'), 'error');
   }
 

@@ -497,8 +497,14 @@ async function cancelBooking(id) {
 
   // Get booking details before deletion for waitlist promotion
   const bookings = Store.get('bookings') || [];
-  const booking = bookings.find(b => b.id === id);
+  const booking = bookings.find(b => String(b.id) === String(id));
   if (!booking) return;
+
+  // Optimistic UI update: remove row immediately
+  const remaining = bookings.filter(b => String(b.id) !== String(id));
+  Store.setLocal('bookings', remaining);
+  renderBookingsTable();
+  if (step === 2) renderSlotGrid();
 
   const { error, count } = await supabaseClient
     .from('bookings')
@@ -507,6 +513,10 @@ async function cancelBooking(id) {
 
   if (error || count === 0) {
     console.error("Cancellation Error:", error);
+    // roll back on failure
+    Store.setLocal('bookings', bookings);
+    renderBookingsTable();
+    if (step === 2) renderSlotGrid();
     showAppAlert("error", "Failed to cancel booking. It might have been already removed.");
     return;
   }
