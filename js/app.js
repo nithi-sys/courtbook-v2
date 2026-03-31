@@ -594,16 +594,40 @@ function setToday() { }
           id: e.id,
           name: e.name,
           date: e.date,
-          startTime: e.start_time,
-          endTime: e.end_time,
+          start: e.start_time,
+          end: e.end_time,
           type: e.type,
-          courts: e.courts
+          courtIds: e.courts
         }));
         Store.setLocal('events', events);
       }
     } catch (e) {
       console.log('Fetch events failed', e);
     }
+
+    // Subscribe to realtime updates for events
+    supabaseClient
+      .channel('events_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, (payload) => {
+        console.log('Events table changed:', payload);
+        // Refetch events on any change
+        supabaseClient.from('events').select('*').then(({ data, error }) => {
+          if (!error && data) {
+            const events = data.map(e => ({
+              id: e.id,
+              name: e.name,
+              date: e.date,
+              start: e.start_time,
+              end: e.end_time,
+              type: e.type,
+              courtIds: e.courts
+            }));
+            Store.setLocal('events', events);
+            renderEventsList();
+          }
+        });
+      })
+      .subscribe();
   }
 
   renderCourts();
