@@ -207,7 +207,18 @@ const Store = (() => {
       localStorage.setItem('cb_events', JSON.stringify(cache.events));
     }
 
-    // 6. Setup Realtime Subscriptions
+    // 6. Fetch Event Participants from DB
+    const { data: dbParticipants } = await supabaseClient.from('event_participants').select('*');
+    if (dbParticipants) {
+      cache.eventParticipants = dbParticipants.map(p => ({
+        id: p.id,
+        eventId: p.event_id,
+        userEmail: p.user_email,
+        player: p.player,
+        joinedAt: p.joined_at
+      }));
+    }
+
     supabaseClient.channel('custom-all-channel')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'courts' }, payload => {
         const mappedCourt = payload.new ? { ...payload.new, baseRate: payload.new.base_rate, maxPlayers: payload.new.max_players, teamSize: payload.new.team_size } : null;
@@ -242,6 +253,13 @@ const Store = (() => {
         if (payload.eventType === 'DELETE') cache.events = cache.events.filter(e => e.id !== payload.old.id);
         localStorage.setItem('cb_events', JSON.stringify(cache.events));
         const ev = new Event('storage', { bubbles: true }); ev.key = 'cb_events'; window.dispatchEvent(ev);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'event_participants' }, payload => {
+        const mapPart = p => p ? ({ id: p.id, eventId: p.event_id, userEmail: p.user_email, player: p.player, joinedAt: p.joined_at }) : null;
+        const mapped = mapPart(payload.new);
+        if (payload.eventType === 'INSERT' && mapped && !cache.eventParticipants.some(p => p.id === mapped.id)) cache.eventParticipants.push(mapped);
+        if (payload.eventType === 'DELETE') cache.eventParticipants = cache.eventParticipants.filter(p => p.id !== payload.old.id);
+        const ev = new Event('storage', { bubbles: true }); ev.key = 'cb_eventParticipants'; window.dispatchEvent(ev);
       })
       .subscribe();
 
@@ -370,11 +388,27 @@ const Store = (() => {
     return { success: true };
   }
 
-  function addEventParticipant(eventId, participant) {
+  async function addEventParticipant(eventId, participant) {
     var participants = get('eventParticipants') || [];
-    if (participants.find(p => p.eventId === eventId && p.userEmail === participant.userEmail)) {
-      return { success: false, error: 'Already participating.' };
+    // Check for duplicate (by eventId + email)
+    if (participants.find(p => String(p.eventId) === String(eventId) && p.userEmail === participant.userEmail)) {
+      return { success: false, error: 'Already participating in this event.' };
     }
+
+    // Save to Supabase DB
+    if (window.supabaseClient) {
+      const { error } = await supabaseClient.from('event_participants').insert({
+        event_id: Number(eventId),
+        user_email: participant.userEmail,
+        player: participant.player
+      });
+      if (error) {
+        console.error('Event participant insert error:', error);
+        return { success: false, error: error.message };
+      }
+    }
+
+    // Update local cache immediately (realtime will also sync it)
     participants.push({
       eventId,
       userEmail: participant.userEmail,

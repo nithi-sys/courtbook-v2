@@ -275,3 +275,35 @@ begin
   end;
 end $$;
 
+-- ============================================================
+-- Event Participants Table
+-- Stores users who click "Participate" on an event
+-- ============================================================
+create table if not exists public.event_participants (
+  id          bigserial primary key,
+  event_id    bigint references public.events(id) on delete cascade not null,
+  user_email  text not null,
+  player      text not null,
+  joined_at   timestamptz default now()
+);
+
+alter table public.event_participants enable row level security;
+
+drop policy if exists "Everyone can view event participants" on public.event_participants;
+create policy "Everyone can view event participants"
+  on public.event_participants for select using (true);
+
+drop policy if exists "Authenticated users can join events" on public.event_participants;
+create policy "Authenticated users can join events"
+  on public.event_participants for insert
+  with check (auth.uid() is not null);
+
+-- Realtime
+do $$
+begin
+  begin
+    alter publication supabase_realtime add table public.event_participants;
+  exception when others then
+    null;
+  end;
+end $$;

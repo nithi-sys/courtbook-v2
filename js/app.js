@@ -131,8 +131,8 @@ function renderEventsList() {
   document.getElementById('eventCount').textContent = `${events.length} events`;
 
   const html = events.length ? events.map(e => {
-    const eventParticipants = participants.filter(p => p.eventId === e.id);
-    const courtNames = (Store.get('courts') || []).filter(c => (e.courtIds || []).includes(c.id)).map(c => c.name).join(', ');
+    const eventParticipants = participants.filter(p => String(p.eventId) === String(e.id));
+    const courtNames = (Store.get('courts') || []).filter(c => (e.courtIds || []).some(cid => Number(cid) === Number(c.id))).map(c => c.name).join(', ');
     const canJoin = e.date >= today;
     return `<div class="card card-pad card-accent-top court-card" style="border-left:4px solid #6366f1;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
@@ -149,23 +149,24 @@ function renderEventsList() {
   if (eventsGrid) eventsGrid.innerHTML = html;
 }
 
-function joinEvent(eventId) {
-  const ev = (Store.get('events') || []).find(e => e.id === eventId);
+async function joinEvent(eventId) {
+  const ev = (Store.get('events') || []).find(e => String(e.id) === String(eventId));
   if (!ev) return showAppAlert('error', 'Event not found.');
 
   const today = new Date().toISOString().split('T')[0];
   if (ev.date < today) return showAppAlert('error', 'This event has already passed.');
 
   const auth = Auth.get();
-  const user = auth?.user; 
-  const userEmail = user?.email || prompt('Enter your email to participate:').trim();
-  const playerName = user?.email ? user.email.split('@')[0] : prompt('Enter your name:').trim();
+  const user = auth?.user;
+  const userEmail = user?.email || (prompt('Enter your email to participate:') || '').trim();
+  const playerName = user?.email ? (user.email.split('@')[0]) : (prompt('Enter your name:') || '').trim();
   if (!userEmail || !playerName) return showAppAlert('error', 'Name and email are required to join.');
 
-  const res = Store.addEventParticipant(eventId, { userEmail, player: playerName });
+  showAppAlert('info', 'Registering participation...');
+  const res = await Store.addEventParticipant(eventId, { userEmail, player: playerName });
   if (!res.success) return showAppAlert('error', res.error || 'Could not join event.');
 
-  showAppAlert('success', `You are now participating in ${ev.name}.`);
+  showAppAlert('success', `✅ You are now participating in "${ev.name}". The admin has been notified.`);
   renderEventsList();
 }
 

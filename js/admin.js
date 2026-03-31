@@ -492,20 +492,39 @@ async function deletePromo(i) {
 function renderEvents() {
   var events = Store.get('events') || [];
   var courts = Store.get('courts') || [];
+  var allParticipants = Store.get('eventParticipants') || [];
 
   document.getElementById('eventTableBody').innerHTML = events.map(function (e, i) {
-    var courtNames = e.courtIds.map(function (cid) {
-      var c = courts.find(function (x) { return x.id == cid; });
-      return c ? c.name : cid;
-    }).join(', ');
+    var courtNames = (e.courtIds || []).map(function (cid) {
+      var c = courts.find(function (x) { return Number(x.id) === Number(cid); });
+      return c ? c.name : ('Court #' + cid);
+    }).join(', ') || '—';
+
+    var eventParticipants = allParticipants.filter(function (p) {
+      return String(p.eventId) === String(e.id);
+    });
+
+    var participantHtml = eventParticipants.length
+      ? eventParticipants.map(function (p) {
+        return '<span class="badge badge-neutral" style="margin:2px 2px;font-size:0.7rem" title="' + p.userEmail + '">' + p.player + '</span>';
+      }).join('')
+      : '<span style="color:var(--muted);font-size:0.78rem">None yet</span>';
+
     return '<tr>' +
       '<td><strong>' + e.name + '</strong></td>' +
       '<td>' + courtNames + '</td>' +
       '<td class="td-mono">' + e.date + '</td>' +
       '<td class="td-mono">' + e.start + '–' + e.end + '</td>' +
       '<td><span class="badge badge-accent">' + e.type + '</span></td>' +
-      '<td><button class="btn btn-sm btn-danger" onclick="deleteEvent(' + i + ')">Remove</button></td></tr>';
-  }).join('') || '<tr><td colspan="6"><div class="empty-state">No events scheduled.</div></td></tr>';
+      '<td>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:2px;align-items:center">' +
+          participantHtml +
+          (eventParticipants.length ? '<span style="font-size:0.7rem;color:var(--muted);margin-left:4px">(' + eventParticipants.length + ')</span>' : '') +
+        '</div>' +
+      '</td>' +
+      '<td><button class="btn btn-sm btn-danger" onclick="deleteEvent(' + i + ')">Remove</button></td>' +
+      '</tr>';
+  }).join('') || '<tr><td colspan="7"><div class="empty-state">No events scheduled.</div></td></tr>';
 
   var wrap = document.getElementById('eventCourtPicker');
   if (wrap) {
