@@ -387,10 +387,11 @@ async function confirmBooking() {
   document.getElementById('playerName').value = '';
   selection = { courtId: null, date: todayStr, start: '', end: '', membership: 'none', equipment: [], bundle: null, players: 1, promoCode: '' };
 
-  showAppAlert('success', `Booking confirmed! Click here or go to My Bookings to Pay.`);
+  showAppAlert('success', `Booking confirmed! The payment QR code has been opened in a new tab. Please complete the payment to secure your slot.`);
   // Auto open the GPay QR code in a new tab for payment
   window.open('assets/gpay-qr.png', '_blank');
   setStep(1);
+}
 
 /* ---- BOOKINGS TABLE ---- */
 function renderBookingsTable() {
