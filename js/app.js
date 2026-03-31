@@ -252,7 +252,7 @@ function renderAddOns() {
   // Bundles
   document.getElementById('bundleSection').style.display = features.bundles ? 'block' : 'none';
   document.getElementById('bundleGrid').innerHTML = [{ id: null, name: 'No Bundle', price: 0, discount: 0 }, ...bundles].map(b => `
-    <div class="addon-card ${selection.bundle === b.id ? 'selected' : ''}" onclick="selectBundle(${JSON.stringify(b.id)})">
+    <div class="addon-card ${selection.bundle === b.id ? 'selected' : ''}" onclick='selectBundle(${JSON.stringify(b.id)})'>
       <div><div class="addon-name">${b.name}</div><div class="addon-stock">${b.discount ? b.discount + '% off items' : 'No extras'}</div></div>
       <div style="text-align:right">
         <div class="addon-price">${b.price ? '+Rs.' + b.price : 'Rs.0'}</div>
@@ -398,7 +398,10 @@ function renderBookingsTable() {
     <td class="td-mono">${b.date}</td><td class="td-mono">${b.start}–${b.end}</td>
     <td class="td-mono">${Store.mins(b.end) - Store.mins(b.start)} min</td>
     <td class="td-amount">Rs.${b.cost}</td>
-    <td><button class="btn btn-sm btn-danger" onclick="cancelBooking('${b.id}')">Cancel</button></td>
+    <td style="display:flex;gap:4px">
+      <button class="btn btn-sm btn-danger" onclick="cancelBooking('${b.id}')">Cancel</button>
+      <a href="assets/gpay-qr.png" target="_blank" class="btn btn-sm" style="background:#0f9d58;color:white;text-decoration:none" title="Scan GPay QR">Pay</a>
+    </td>
   </tr>`).join('');
 }
 
