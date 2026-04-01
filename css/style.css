@@ -727,6 +727,50 @@ input:checked+.slider::before {
   color: white;
 }
 
+/* Event cards — Participate (red) ↔ Joined (green); scoped so other .btn-primary stay accent */
+.btn-join-event.btn-primary {
+  background: linear-gradient(135deg, #e11d48, #be123c);
+  color: #fff;
+  border: none;
+}
+
+.btn-join-event.btn-primary:hover {
+  opacity: 0.92;
+}
+
+.btn-join-event.btn-success {
+  background: linear-gradient(135deg, #16a34a, #15803d);
+  color: #fff;
+  border: none;
+}
+
+.btn-join-event.btn-success:hover {
+  opacity: 0.92;
+}
+
+/* Past event — neutral, not red/green */
+.btn-join-event--passed:disabled {
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  cursor: not-allowed;
+}
+
+.btn-join-event--passed:disabled:hover {
+  transform: none;
+}
+
+/* While join/leave request runs — keep red/green, dimmed */
+.btn-join-event.btn-primary:disabled:not(.btn-join-event--passed),
+.btn-join-event.btn-success:disabled:not(.btn-join-event--passed) {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.btn-join-event:disabled:hover {
+  transform: none;
+}
+
 /* ---- TABLE ---- */
 .table-card {
   background: var(--white);

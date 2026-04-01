@@ -224,6 +224,7 @@ function renderEventsList() {
     const joinedCount = eventParticipants.length;
     const btnText = !canJoin ? 'Event Passed' : (isJoined ? 'Joined' : 'Participate');
     const btnClass = isJoined ? 'btn-success' : 'btn-primary';
+    const passedClass = !canJoin ? ' btn-join-event--passed' : '';
     const joinAttr = encodeURIComponent(String(e.id));
     const btnTitle = !canJoin ? '' : (isJoined ? 'Click to leave this event' : 'Register for this event');
 
@@ -236,7 +237,7 @@ function renderEventsList() {
       <div style="font-size:0.85rem;margin-bottom:6px">${e.date} · ${e.start}–${e.end}</div>
       ${participantsList}
       <div class="event-card-actions" style="margin-top:12px">
-        <button type="button" id="btn-join-${String(e.id).replace(/[^a-zA-Z0-9_-]/g, '_')}" class="btn ${btnClass} btn-full btn-join-event" data-join-event="${joinAttr}" title="${btnTitle.replace(/"/g, '&quot;')}" ${!canJoin ? 'disabled' : ''}>${btnText}</button>
+        <button type="button" id="btn-join-${String(e.id).replace(/[^a-zA-Z0-9_-]/g, '_')}" class="btn ${btnClass} btn-full btn-join-event${passedClass}" data-join-event="${joinAttr}" title="${btnTitle.replace(/"/g, '&quot;')}" ${!canJoin ? 'disabled' : ''}>${btnText}</button>
       </div>
     </div>`;
   }).join('') : '<div class="empty-state" style="grid-column:1/-1">No upcoming events.</div>';
