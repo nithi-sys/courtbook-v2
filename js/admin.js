@@ -557,32 +557,64 @@ async function deletePromo(i) {
   adminAlert('"' + code + '" removed.');
 }
 
+/* ======== EVENT PARTICIPANTS (shared: Events module + Courts Overview) ======== */
+function getParticipantsForAdminView() {
+  var storeParticipants = Store.get('eventParticipants') || [];
+  var localParticipants = [];
+  try {
+    localParticipants = (JSON.parse(localStorage.getItem('cb_eventParticipants')) || []).filter(function (p) {
+      return Store.isJoinedParticipant(p);
+    });
+  } catch (e) {
+    localParticipants = [];
+  }
+  var combined = [].concat(storeParticipants);
+  localParticipants.forEach(function (lp) {
+    var exists = combined.some(function (sp) {
+      return (sp.id && lp.id && sp.id === lp.id) ||
+        (String(sp.eventRef || sp.eventId || sp.event_id || '').toLowerCase().trim() === String(lp.eventRef || lp.eventId || lp.event_id || '').toLowerCase().trim() &&
+          String(sp.userEmail || sp.user_email || '').toLowerCase().trim() === String(lp.userEmail || lp.user_email || '').toLowerCase().trim());
+    });
+    if (!exists) combined.push(lp);
+  });
+  return combined.filter(function (p) {
+    return Store.isJoinedParticipant(p);
+  });
+}
+
+/** Resolve display event row fields for a participant row (used on overview + events tables). */
+function resolveParticipantEventMeta(p, events) {
+  const pRef = String(p.eventRef || '').toLowerCase().trim();
+  const pId = String(p.eventId || p.event_id || '').toLowerCase().trim();
+  const pKey = String(p.eventKey || '').trim();
+  var ev = null;
+  if (pRef) ev = events.find(function (x) { return String(x.id || '').toLowerCase().trim() === pRef; });
+  if (!ev && pId) ev = events.find(function (x) { return String(x.id || '').toLowerCase().trim() === pId; });
+  if (!ev && pKey) {
+    ev = events.find(function (x) {
+      return [
+        String(x.name || '').trim().toLowerCase(),
+        String(x.date || '').trim(),
+        String(x.start || '').trim(),
+        String(x.end || '').trim(),
+        String(x.type || '').trim().toLowerCase()
+      ].join('|') === pKey;
+    });
+  }
+  var eventTitle = ev
+    ? ev.name
+    : ((p.eventName && p.eventDate) ? p.eventName : 'Unknown event');
+  var evDate = ev ? ev.date : (p.eventDate || '—');
+  var evStart = ev ? ev.start : (p.eventStart || '—');
+  var evEnd = ev ? ev.end : (p.eventEnd || '—');
+  return { eventTitle: eventTitle, evDate: evDate, evStart: evStart, evEnd: evEnd };
+}
+
 /* ======== EVENTS & TOURNAMENTS — fix 10 ======== */
 /** @param {boolean} [skipCourtPicker] If true, only refresh event/participant tables (keeps court checkboxes stable while clicking). */
 function renderEvents(skipCourtPicker) {
   var events = Store.get('events') || [];
   var courts = Store.get('courts') || [];
-  function getParticipantsForAdminView() {
-    var storeParticipants = Store.get('eventParticipants') || [];
-    var localParticipants = [];
-    try {
-      localParticipants = (JSON.parse(localStorage.getItem('cb_eventParticipants')) || []).filter(function (p) {
-        return Store.isJoinedParticipant(p);
-      });
-    } catch (e) {
-      localParticipants = [];
-    }
-    var combined = [].concat(storeParticipants);
-    localParticipants.forEach(function (lp) {
-      var exists = combined.some(function (sp) {
-        return (sp.id && lp.id && sp.id === lp.id) ||
-          (String(sp.eventRef || sp.eventId || sp.event_id || '').toLowerCase().trim() === String(lp.eventRef || lp.eventId || lp.event_id || '').toLowerCase().trim() &&
-            String(sp.userEmail || sp.user_email || '').toLowerCase().trim() === String(lp.userEmail || lp.user_email || '').toLowerCase().trim());
-      });
-      if (!exists) combined.push(lp);
-    });
-    return combined;
-  }
   var allParticipants = getParticipantsForAdminView();
   function eventKey(ev) {
     return [
@@ -644,31 +676,15 @@ function renderEvents(skipCourtPicker) {
 
   var participantsBody = document.getElementById('eventParticipantsBody');
   var countEl = document.getElementById('eventParticipantsCount');
-  if (countEl) countEl.textContent = allParticipants.length + ' registered';
+  if (countEl) countEl.textContent = allParticipants.length + ' joined';
 
   if (participantsBody) {
     const pRows = allParticipants.map(function (p) {
-      const pRef = String(p.eventRef || '').toLowerCase().trim();
-      const pId = String(p.eventId || p.event_id || '').toLowerCase().trim();
-      const pKey = String(p.eventKey || '').trim();
-      var ev = null;
-
-      if (pRef) ev = events.find(x => String(x.id || '').toLowerCase().trim() === pRef);
-      if (!ev && pId) ev = events.find(x => String(x.id || '').toLowerCase().trim() === pId);
-      if (!ev && pKey) {
-        ev = events.find(x => [
-          String(x.name || '').trim().toLowerCase(),
-          String(x.date || '').trim(),
-          String(x.start || '').trim(),
-          String(x.end || '').trim(),
-          String(x.type || '').trim().toLowerCase()
-        ].join('|') === pKey);
-      }
-
-      var eventTitle = ev ? ev.name : (p.eventName || 'Unknown Event');
-      var evDate = ev ? ev.date : (p.eventDate || '—');
-      var evStart = ev ? ev.start : (p.eventStart || '—');
-      var evEnd = ev ? ev.end : (p.eventEnd || '—');
+      const meta = resolveParticipantEventMeta(p, events);
+      var eventTitle = meta.eventTitle;
+      var evDate = meta.evDate;
+      var evStart = meta.evStart;
+      var evEnd = meta.evEnd;
       var email = p.userEmail || p.user_email || '—';
       var joined = p.joinedAt || p.joined_at;
       var joinedSub = joined
@@ -687,7 +703,7 @@ function renderEvents(skipCourtPicker) {
         '<td class="td-mono">' + adminEscapeHtml(evDate) + '</td>' +
         '<td class="td-mono">' + adminEscapeHtml(evStart + '–' + evEnd) + '</td>' +
         '<td class="td-amount">—</td>' +
-        '<td><span class="badge badge-available">Registered</span>' + joinedSub + '</td>' +
+        '<td><span class="badge badge-available">Joined</span>' + joinedSub + '</td>' +
         '<td>' + removeBtn + '</td></tr>';
     });
     participantsBody.innerHTML = pRows.join('') || '<tr><td colspan="9"><div class="empty-state">No participants joined yet.</div></td></tr>';
@@ -1122,14 +1138,39 @@ function renderUserPortal() {
 
   var tb = bookings.filter(b => b.date === todayStr && b.status !== 'cancelled');
   var busyCount = courts.filter(c => isCurrentlyBusy(c.id, bookings)).length;
-  var totalParticipants = (Store.get('eventParticipants') || []).length;
-  
+  var eventsForParticipants = Store.get('events') || [];
+  var allParticipants = getParticipantsForAdminView();
+
   document.getElementById('upStatTotal').textContent = courts.length;
   document.getElementById('upStatAvail').textContent = courts.length - busyCount;
   document.getElementById('upStatBooked').textContent = busyCount;
   document.getElementById('upStatToday').textContent = tb.length;
   document.getElementById('upStatRevenue').textContent = 'Rs.' + tb.reduce((s, b) => s + (b.cost || 0), 0);
-  document.getElementById('upStatParticipants').textContent = totalParticipants;
+  document.getElementById('upStatParticipants').textContent = allParticipants.length + ' joined';
+
+  var upJoinCount = document.getElementById('upEventJoinsCount');
+  if (upJoinCount) upJoinCount.textContent = allParticipants.length + ' joined';
+
+  var upPartBody = document.getElementById('upEventParticipantsBody');
+  if (upPartBody) {
+    upPartBody.innerHTML = allParticipants.map(function (p) {
+      var meta = resolveParticipantEventMeta(p, eventsForParticipants);
+      var email = p.userEmail || p.user_email || '—';
+      var joined = p.joinedAt || p.joined_at;
+      var joinedSub = joined
+        ? '<div style="font-size:0.6rem;color:var(--muted);margin-top:2px">Joined ' + adminEscapeHtml(new Date(joined).toLocaleString()) + '</div>'
+        : '';
+      return '<tr>' +
+        '<td><strong>' + adminEscapeHtml(meta.eventTitle) + '</strong></td>' +
+        '<td>' + adminEscapeHtml(p.player || '—') + '</td>' +
+        '<td>' + adminEscapeHtml(email) + '</td>' +
+        '<td><span class="badge badge-available">Joined</span>' + joinedSub + '</td>' +
+        '<td class="td-mono">' + adminEscapeHtml(meta.evDate) + '</td>' +
+        '<td class="td-mono">' + adminEscapeHtml(meta.evStart + '–' + meta.evEnd) + '</td>' +
+        '</tr>';
+    }).join('') ||
+      '<tr><td colspan="6"><div class="empty-state">No participants joined yet.</div></td></tr>';
+  }
 }
 
 /* ======== RENDER MAP ======== */
