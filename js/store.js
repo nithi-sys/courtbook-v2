@@ -608,6 +608,43 @@ const Store = (() => {
     return { success: true };
   }
 
+  async function removeEventParticipant(eventId, userEmail) {
+    let participants = get('eventParticipants') || [];
+    const normalizedEId = String(eventId || '').toLowerCase().trim();
+    const normalizedEmail = String(userEmail || '').toLowerCase().trim();
+
+    // 1. Remove from local list
+    const initialLen = participants.length;
+    participants = participants.filter(p => {
+      const pEId = String(p.eventId || p.event_id || '').toLowerCase().trim();
+      const pEmail = String(p.userEmail || p.user_email || '').toLowerCase().trim();
+      return !(pEId === normalizedEId && pEmail === normalizedEmail);
+    });
+
+    if (participants.length === initialLen) {
+      return { success: false, error: 'Participation record not found.' };
+    }
+
+    // 2. Remove from Supabase DB (if ID is numeric)
+    if (window.supabaseClient && !isNaN(Number(normalizedEId))) {
+      const { error } = await supabaseClient
+        .from('event_participants')
+        .delete()
+        .eq('event_id', Number(normalizedEId))
+        .eq('user_email', userEmail);
+      
+      if (error) {
+        console.error('❌ DB Delete Error:', error);
+        if (error.code !== 'PGRST205' && error.code !== '404') {
+          return { success: false, error: `DB Error: ${error.message}` };
+        }
+      }
+    }
+
+    setLocal('eventParticipants', participants);
+    return { success: true };
+  }
+
   async function promoteWaitlist(courtId, date, start, end) {
     const waitlist = get('waitlist') || [];
     const candidates = waitlist
@@ -864,7 +901,7 @@ const Store = (() => {
     calcCost, checkConflict, getSlotPlayerCount,
     getPendingLock, acquireLock, releaseLock,
     applyPromo, addNotification,
-    addToWaitlist, promoteWaitlist, addEventParticipant,
+    addToWaitlist, promoteWaitlist, addEventParticipant, removeEventParticipant,
     generateSlots, mins, toTime, isOverlap, getEquipmentForSport,
     DEFAULTS
   };

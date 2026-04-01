@@ -154,7 +154,7 @@ function renderEventsList() {
     const auth = Auth.get();
     const user = auth?.user;
     const isJoined = eventParticipants.some(p => String(p.userEmail) === String(user?.email));
-    const btnText = !canJoin ? 'Event Passed' : (isJoined ? 'Already Joined' : 'Participate');
+    const btnText = !canJoin ? 'Event Passed' : (isJoined ? 'Joined (Click to Revoke)' : 'Participate');
     const btnClass = isJoined ? 'btn-success' : 'btn-primary';
 
     return `<div class="card card-pad card-accent-top court-card" style="border-left:4px solid #6366f1;">
@@ -166,7 +166,7 @@ function renderEventsList() {
       <div style="font-size:0.85rem;margin-bottom:6px">${e.date} · ${e.start}–${e.end}</div>
       ${participantsList}
       <div style="margin-top:12px">
-        <button id="btn-join-${e.id}" class="btn ${btnClass} btn-full" ${(!canJoin || isJoined) ? 'disabled' : ''} onclick="joinEvent('${e.id}')">${btnText}</button>
+        <button id="btn-join-${e.id}" class="btn ${btnClass} btn-full" ${!canJoin ? 'disabled' : ''} onclick="joinEvent('${e.id}')">${btnText}</button>
       </div>
     </div>`;
   }).join('') : '<div class="empty-state" style="grid-column:1/-1">No upcoming events.</div>';
@@ -218,20 +218,35 @@ async function joinEvent(eventId) {
 
   showAppAlert('info', 'Registering participation...');
   try {
-    const res = await Store.addEventParticipant(eventId, { userEmail, player: playerName });
-    console.log('Store.addEventParticipant result:', res);
+    const participants = Store.get('eventParticipants') || [];
+    const isJoined = participants.some(p => {
+      const pEId = String(p.eventId || p.event_id || '').toLowerCase().trim();
+      const pEmail = String(p.userEmail || p.user_email || '').toLowerCase().trim();
+      return pEId === String(eventId).toLowerCase().trim() && pEmail === userEmail.toLowerCase().trim();
+    });
 
+    let res;
+    if (isJoined) {
+      if (!confirm('Are you sure you want to revoke your participation?')) {
+        btn.textContent = 'Joined (Click to Revoke)';
+        btn.disabled = false;
+        return;
+      }
+      res = await Store.removeEventParticipant(eventId, userEmail);
+    } else {
+      res = await Store.addEventParticipant(eventId, { userEmail, player: playerName });
+    }
+
+    console.log('Store participation action result:', res);
     if (!res.success) {
-      console.error('❌ Join failed:', res.error);
-      showAppAlert('error', `❌ ${res.error || 'Could not join.'}`);
-      if (btn) { btn.disabled = false; btn.textContent = 'Participate'; }
+      console.error('❌ Action failed:', res.error);
+      showAppAlert('error', `❌ ${res.error || 'Request failed.'}`);
+      btn.textContent = isJoined ? 'Joined (Click to Revoke)' : 'Participate';
+      btn.disabled = false;
       return;
     }
 
-    showAppAlert('success', `✅ You are now participating in "${ev.name}".`);
-    if (btn) { btn.textContent = 'Joined Successfully'; }
-    
-    // Force immediate local update
+    showAppAlert('info', isJoined ? 'Participation Revoked' : 'Joined Successfully!');
     renderEventsList();
   } catch (err) {
     console.error('❌ joinEvent error:', err);
