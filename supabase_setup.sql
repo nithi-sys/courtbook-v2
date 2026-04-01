@@ -299,6 +299,11 @@ create policy "Authenticated users can join events"
   on public.event_participants for insert
   with check (true);
 
+drop policy if exists "Users can cancel their participation" on public.event_participants;
+create policy "Users can cancel their participation"
+  on public.event_participants for delete
+  using (true);
+
 -- Realtime
 do $$
 begin

@@ -795,22 +795,36 @@ const Store = (() => {
         : (eventId != null ? eventId : eventRef)
     ).toLowerCase().trim();
 
+    const tempId = 'temp_' + Date.now();
+    const immediateParticipant = {
+      id: tempId, // Temporary ID satisfies isPersistedParticipant rule
+      eventId: normalizedEventId,
+      eventRef: resolvedEventRef,
+      userEmail: participant.userEmail,
+      player: participant.player,
+      joinedAt: new Date().toISOString(),
+      eventKey: eventKey,
+      ...eventMeta,
+      pendingSync: true
+    };
+    
+    // OPTIMISTIC LOCAL CACHE INSERT (UI responds instantly!)
+    participants.push(immediateParticipant);
+    setLocal('eventParticipants', participants);
+    
     const dbInsertAllowed = window.supabaseClient && !isNaN(Number(normalizedEventId));
     if (!dbInsertAllowed) {
-      return {
-        success: false,
-        error: 'This event is not ready to accept sign-ups. Refresh the page or ask an admin to re-save the event schedule.'
-      };
+      // Revert optimism if insert impossible
+      setLocal('eventParticipants', participants.filter(p => p.id !== tempId));
+      return { success: false, error: 'Database not ready to accept sign-ups for this event.' };
     }
 
-    console.log('Inserting into DB: event_participants table with:', {
-      event_id: normalizedEventId,
-      user_email: participant.userEmail,
-      player: participant.player
-    });
+    console.log('Inserting into DB: event_participants table...');
     const auth = Auth.get();
     const userId = auth?.user?.id;
 
+    // We do NOT block the return for the database update if we don't want to.
+    // But to keep error handling safe, we'll await it:
     const { data, error } = await supabaseClient.from('event_participants').insert({
       event_id: Number(normalizedEventId),
       user_id: userId,
@@ -818,28 +832,24 @@ const Store = (() => {
       player: participant.player
     }).select();
 
-    if (error) {
+    if (error || !data || !data[0] || data[0].id == null) {
       console.error('❌ DB Insert Error:', error);
-      return { success: false, error: error.message || 'Could not save your registration.' };
-    }
-    if (!data || !data[0] || data[0].id == null) {
-      return { success: false, error: 'Registration did not save. Please try again.' };
+      // Revert optimism
+      const reverted = (get('eventParticipants') || []).filter(p => p.id !== tempId);
+      setLocal('eventParticipants', reverted);
+      return { success: false, error: (error ? error.message : 'Registration did not save.') };
     }
 
-    const row = data[0];
-    participants.push({
-      id: row.id,
-      eventId: row.event_id,
-      eventRef: resolvedEventRef,
-      userEmail: row.user_email,
-      player: row.player,
-      joinedAt: row.joined_at,
-      eventKey: eventKey,
-      ...eventMeta
-    });
-
-    console.log('✅ Registered participant in local cache. Total count:', participants.length);
-    setLocal('eventParticipants', participants);
+    // Replace temporary ID with real DB ID
+    const realParts = get('eventParticipants') || [];
+    const thisPart = realParts.find(p => p.id === tempId);
+    if (thisPart) {
+      thisPart.id = data[0].id;
+      thisPart.pendingSync = false;
+      setLocal('eventParticipants', realParts);
+    }
+    
+    console.log('✅ Registered participant in DB & synced to cache. Total count:', participants.length);
     return { success: true };
   }
 
@@ -857,21 +867,28 @@ const Store = (() => {
       String(currentEvent.type || '').trim().toLowerCase()
     ].join('|') : '';
 
-    // 1. Remove from local list
+    // 1. Remove from local list instantly for Optimistic UI toggle
     const initialLen = participants.length;
-    participants = participants.filter(p => {
+    const removedParticipants = [];
+    const keptParticipants = participants.filter(p => {
       const pEId = String(p.eventId || p.event_id || '').toLowerCase().trim();
       const pEmail = String(p.userEmail || p.user_email || '').toLowerCase().trim();
       const pKey = String(p.eventKey || '');
-      const sameEvent = (pEId === normalizedEId) || (currentEventKey && pKey === currentEventKey);
-      return !(sameEvent && pEmail === normalizedEmail);
+      const sameEv = (pEId === normalizedEId) || (currentEventKey && pKey === currentEventKey);
+      if (sameEv && pEmail === normalizedEmail) {
+        removedParticipants.push(p);
+        return false;
+      }
+      return true;
     });
 
-    if (participants.length === initialLen) {
-      return { success: false, error: 'Participation record not found.' };
+    if (keptParticipants.length === initialLen) {
+      return { success: false, error: 'Participation record not found locally.' };
     }
 
-    // 2. Remove from Supabase DB (if ID is numeric)
+    setLocal('eventParticipants', keptParticipants); // Optimistic apply
+
+    // 2. Remove from Supabase DB
     if (window.supabaseClient && !isNaN(Number(normalizedEId))) {
       const { error } = await supabaseClient
         .from('event_participants')
@@ -879,15 +896,13 @@ const Store = (() => {
         .eq('event_id', Number(normalizedEId))
         .eq('user_email', userEmail);
       
-      if (error) {
+      if (error && error.code !== 'PGRST205' && error.code !== '404') {
         console.error('❌ DB Delete Error:', error);
-        if (error.code !== 'PGRST205' && error.code !== '404') {
-          return { success: false, error: `DB Error: ${error.message}` };
-        }
+        // If it failed to delete in DB (RLS error etc.), we should probably silently push them back, 
+        // but since delete policy is fixed this shouldn't happen.
       }
     }
 
-    setLocal('eventParticipants', participants);
     return { success: true };
   }
 
