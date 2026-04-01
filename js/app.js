@@ -80,14 +80,6 @@ function isUserJoinedEvent(eventId, userEmail) {
   });
 }
 
-function setJoinButtonVisual(btn, isJoined) {
-  if (!btn) return;
-  btn.classList.toggle('btn-success', !!isJoined);
-  btn.classList.toggle('btn-primary', !isJoined);
-  btn.textContent = isJoined ? 'Joined' : 'Participate';
-  btn.title = isJoined ? 'Click to leave this event' : 'Register for this event';
-}
-
 document.getElementById('headerDate').textContent = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 document.getElementById('bookDate').value = todayStr;
 document.getElementById('bookDate').min = todayStr;
@@ -269,29 +261,30 @@ async function joinEvent(eventId) {
   if (!ident.userEmail || !ident.playerName) return;
 
   var alreadyJoined = isUserJoinedEvent(eventId, ident.userEmail);
-  // Instant label toggle; renderEventsList() reconciles after async work
-  setJoinButtonVisual(btn, !alreadyJoined);
+  btn.disabled = true;
 
-  if (alreadyJoined) {
-    var resOut = await Store.removeEventParticipant(eventId, ident.userEmail);
-    if (!resOut.success && resOut.error) {
-      console.warn('DB Revoke Error:', resOut.error);
-    }
-    showAppAlert('info', 'Participation Revoked');
-  } else {
-    var resIn = await Store.addEventParticipant(eventId, {
-      userEmail: ident.userEmail,
-      player: ident.playerName
-    });
-
-    if (resIn.success) {
-      showAppAlert('success', resIn.message === 'Already joined.' ? 'You have already joined!' : 'Joined Successfully!');
+  try {
+    if (alreadyJoined) {
+      var resOut = await Store.removeEventParticipant(eventId, ident.userEmail);
+      if (!resOut.success && resOut.error) {
+        console.warn('DB Revoke Error:', resOut.error);
+      }
+      showAppAlert('info', 'Participation Revoked');
     } else {
-      showAppAlert('error', resIn.error || 'Failed to join event.');
-    }
-  }
+      var resIn = await Store.addEventParticipant(eventId, {
+        userEmail: ident.userEmail,
+        player: ident.playerName
+      });
 
-  renderEventsList();
+      if (resIn.success) {
+        showAppAlert('success', resIn.message === 'Already joined.' ? 'You have already joined!' : 'Joined Successfully!');
+      } else {
+        showAppAlert('error', resIn.error || 'Failed to join event.');
+      }
+    }
+  } finally {
+    renderEventsList();
+  }
 }
 
 function isCurrentlyBusy(courtId, bookings) {
