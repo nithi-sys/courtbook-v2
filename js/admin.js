@@ -19,6 +19,15 @@ function adminAlert(msg, type) {
   adminAlert._t = setTimeout(function () { el.classList.remove('show'); }, 3200);
 }
 
+function adminEscapeHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 // Fallback notifier for new bookings (works even if realtime callbacks are delayed/missed).
 var _knownBookingIds = new Set();
 function primeBookingNotifier() {
@@ -598,6 +607,9 @@ function renderEvents() {
   }).join('') || '<tr><td colspan="6"><div class="empty-state">No events scheduled.</div></td></tr>';
 
   var participantsBody = document.getElementById('eventParticipantsBody');
+  var countEl = document.getElementById('eventParticipantsCount');
+  if (countEl) countEl.textContent = allParticipants.length + ' registered';
+
   if (participantsBody) {
     const pRows = allParticipants.map(function (p) {
       const pRef = String(p.eventRef || '').toLowerCase().trim();
@@ -617,20 +629,32 @@ function renderEvents() {
         ].join('|') === pKey);
       }
 
-      var eventLabel = ev
-        ? (ev.name + ' (' + ev.date + ' ' + ev.start + '–' + ev.end + ')')
-        : ((p.eventName && p.eventDate) ? (p.eventName + ' (' + p.eventDate + ' ' + (p.eventStart || '--:--') + '–' + (p.eventEnd || '--:--') + ')') : 'Unknown Event');
+      var eventTitle = ev ? ev.name : (p.eventName || 'Unknown Event');
+      var evDate = ev ? ev.date : (p.eventDate || '—');
+      var evStart = ev ? ev.start : (p.eventStart || '—');
+      var evEnd = ev ? ev.end : (p.eventEnd || '—');
       var email = p.userEmail || p.user_email || '—';
       var joined = p.joinedAt || p.joined_at;
-      var joinedText = joined ? new Date(joined).toLocaleString() : '—';
+      var joinedSub = joined
+        ? '<div style="font-size:0.6rem;color:var(--muted);margin-top:2px">Joined ' + adminEscapeHtml(new Date(joined).toLocaleString()) + '</div>'
+        : '';
+
+      var removeBtn = (p.id != null && p.id !== '')
+        ? '<button class="btn btn-sm btn-danger" onclick="adminRemoveEventParticipantByIdOnly(' + Number(p.id) + ')">Remove</button>'
+        : '<button class="btn btn-sm btn-danger" onclick=\'adminRemoveEventParticipantLoose(' + JSON.stringify(String(p.eventId || p.event_id || '')) + ',' + JSON.stringify(String(p.userEmail || p.user_email || '')) + ')\'>Remove</button>';
+
       return '<tr>' +
-        '<td>' + eventLabel + '</td>' +
-        '<td><strong>' + (p.player || 'user') + '</strong></td>' +
-        '<td>' + email + '</td>' +
-        '<td class="td-mono">' + joinedText + '</td>' +
-        '</tr>';
+        '<td><strong>' + adminEscapeHtml(eventTitle) + '</strong><div style="font-size:0.65rem;color:var(--muted);margin-top:2px">' + adminEscapeHtml(email) + '</div></td>' +
+        '<td>' + adminEscapeHtml(p.player || '—') + '</td>' +
+        '<td>—</td>' +
+        '<td class="td-mono">1</td>' +
+        '<td class="td-mono">' + adminEscapeHtml(evDate) + '</td>' +
+        '<td class="td-mono">' + adminEscapeHtml(evStart + '–' + evEnd) + '</td>' +
+        '<td class="td-amount">—</td>' +
+        '<td><span class="badge badge-available">Registered</span>' + joinedSub + '</td>' +
+        '<td>' + removeBtn + '</td></tr>';
     });
-    participantsBody.innerHTML = pRows.join('') || '<tr><td colspan="4"><div class="empty-state">No participants joined yet.</div></td></tr>';
+    participantsBody.innerHTML = pRows.join('') || '<tr><td colspan="9"><div class="empty-state">No participants joined yet.</div></td></tr>';
   }
 
   var wrap = document.getElementById('eventCourtPicker');
@@ -644,6 +668,22 @@ function renderEvents() {
         '</label>';
     }).join('') || '<div style="font-size:0.82rem;color:var(--muted)">No active courts available</div>';
   }
+}
+
+async function adminRemoveEventParticipantByIdOnly(id) {
+  if (!confirm('Remove this participant from the event?')) return;
+  const res = await Store.removeEventParticipantById(id);
+  if (!res.success) return adminAlert(res.error || 'Could not remove.', 'error');
+  adminAlert('Participant removed.');
+  renderEvents();
+}
+
+async function adminRemoveEventParticipantLoose(eventId, userEmail) {
+  if (!confirm('Remove this participant from the event?')) return;
+  const res = await Store.removeEventParticipant(eventId, userEmail);
+  if (!res.success) return adminAlert(res.error || 'Could not remove.', 'error');
+  adminAlert('Participant removed.');
+  renderEvents();
 }
 
 async function addEvent() {

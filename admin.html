@@ -579,17 +579,23 @@
           </div>
         </div>
         <div class="section-header" style="margin-top:1rem">
-          <div class="section-title">Event Participants</div>
+          <div class="section-title">Event Participants</div><span class="count-badge" id="eventParticipantsCount"></span>
         </div>
-        <div class="table-card">
+        <p style="font-size:0.78rem;color:var(--muted);margin:-0.5rem 0 1rem">Same flow as Bookings &amp; Waitlist: when a user taps Participate on the portal, their row appears here from the database.</p>
+        <div class="table-card" style="margin-bottom:1.75rem">
           <div class="table-scroll">
             <table>
               <thead>
                 <tr>
                   <th>Event</th>
-                  <th>Participant</th>
-                  <th>Email</th>
-                  <th>Joined At</th>
+                  <th>Player</th>
+                  <th>Membership</th>
+                  <th>Players</th>
+                  <th>Date</th>
+                  <th>Time</th>
+                  <th>Amount</th>
+                  <th>Status</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody id="eventParticipantsBody"></tbody>

@@ -901,6 +901,21 @@ const Store = (() => {
     return { success: true };
   }
 
+  async function removeEventParticipantById(participantId) {
+    const participants = get('eventParticipants') || [];
+    const row = participants.find(p => String(p.id) === String(participantId));
+    if (!row) return { success: false, error: 'Participant not found.' };
+    const next = participants.filter(p => String(p.id) !== String(participantId));
+    if (window.supabaseClient && row.id != null) {
+      const { error } = await supabaseClient.from('event_participants').delete().eq('id', participantId);
+      if (error && error.code !== 'PGRST205' && error.code !== '404') {
+        return { success: false, error: error.message };
+      }
+    }
+    setLocal('eventParticipants', next);
+    return { success: true };
+  }
+
   async function promoteWaitlist(courtId, date, start, end) {
     const waitlist = get('waitlist') || [];
     const candidates = waitlist
@@ -1187,7 +1202,7 @@ const Store = (() => {
     calcCost, checkConflict, getSlotPlayerCount,
     getPendingLock, acquireLock, releaseLock,
     applyPromo, addNotification,
-    addToWaitlist, promoteWaitlist, addEventParticipant, removeEventParticipant,
+    addToWaitlist, promoteWaitlist, addEventParticipant, removeEventParticipant, removeEventParticipantById,
     generateSlots, mins, toTime, isOverlap, getEquipmentForSport,
     DEFAULTS
   };
