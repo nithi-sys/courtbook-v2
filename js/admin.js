@@ -976,4 +976,11 @@ window.addEventListener('storage', (e) => {
       renders[modId]();
     }
   }
+
+  // For event participant changes, always refresh event table (and keep counters in sync)
+  if (e && e.key === 'cb_eventParticipants') {
+    if (typeof renderEvents === 'function') {
+      renderEvents();
+    }
+  }
 });
