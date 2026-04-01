@@ -225,18 +225,17 @@ async function joinEvent(eventId) {
   }
 
   showAppAlert('info', 'Registering participation...');
-  try {
-    // 1. Check if user is already joined (to determine if we are revoking)
-    // We check against all known participants
-    const participants = Store.get('eventParticipants') || [];
-    let existingEntry = participants.find(p => {
-      const pEId = String(p.eventId || p.event_id || '').toLowerCase().trim();
-      const pEmail = String(p.userEmail || p.user_email || '').toLowerCase().trim();
-      return pEId === String(eventId).toLowerCase().trim() && pEmail === userEmail.toLowerCase().trim();
-    });
+  // 10. OPTIMISTIC UI: Update button immediately to improve feel
+  const isRevoke = !!existingEntry;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = isRevoke ? 'Revoking...' : 'Joining...';
+    btn.style.opacity = '0.7';
+  }
 
+  try {
     let res;
-    if (existingEntry) {
+    if (isRevoke) {
       if (!confirm('Are you sure you want to revoke your participation?')) {
         renderEventsList();
         return;
@@ -254,12 +253,12 @@ async function joinEvent(eventId) {
       return;
     }
 
-    showAppAlert('success', existingEntry ? 'Participation Revoked' : 'Joined Successfully!');
+    showAppAlert('success', isRevoke ? 'Participation Revoked' : 'Joined Successfully!');
     renderEventsList();
   } catch (err) {
     console.error('❌ joinEvent error:', err);
     showAppAlert('error', '❌ System error joining event.');
-    if (btn) { btn.disabled = false; btn.textContent = 'Participate'; }
+    renderEventsList();
   }
 }
 
