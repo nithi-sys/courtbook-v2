@@ -231,7 +231,7 @@ function renderEventsList() {
     return `<div class="card card-pad card-accent-top court-card event-card-user" style="border-left:4px solid #6366f1;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
         <div><strong>${e.name}</strong> <span class="badge badge-accent">${e.type}</span></div>
-        <span class="badge badge-neutral event-joined-badge" style="font-size:0.7rem;letter-spacing:0.02em">${joinedCount} joined</span>
+        <span id="count-badge-${String(e.id).replace(/[^a-zA-Z0-9_-]/g, '_')}" class="badge badge-neutral event-joined-badge" style="font-size:0.7rem;letter-spacing:0.02em">${joinedCount} joined</span>
       </div>
       <div style="font-size:0.85rem;margin-bottom:6px">Courts: ${courtNames || 'N/A'}</div>
       <div style="font-size:0.85rem;margin-bottom:6px">${e.date} · ${e.start}–${e.end}</div>
@@ -264,13 +264,21 @@ async function joinEvent(eventId) {
   var alreadyJoined = isUserJoinedEvent(eventId, ident.userEmail);
   btn.disabled = true;
 
+  // Find badge and determine next count for optimistic update
+  var badgeId = 'count-badge-' + String(eventId).replace(/[^a-zA-Z0-9_-]/g, '_');
+  var badgeEl = document.getElementById(badgeId);
+  var currentCountStr = badgeEl ? badgeEl.innerText.split(' ')[0] : '0';
+  var currentCount = parseInt(currentCountStr) || 0;
+
   // Optimistic UI toggle for instant feedback
   if (alreadyJoined) {
     btn.innerText = 'Participate';
     btn.classList.replace('btn-success', 'btn-primary');
+    if (badgeEl) badgeEl.innerText = `${Math.max(0, currentCount - 1)} joined`;
   } else {
     btn.innerText = 'Joined';
     btn.classList.replace('btn-primary', 'btn-success');
+    if (badgeEl) badgeEl.innerText = `${currentCount + 1} joined`;
   }
 
   try {
