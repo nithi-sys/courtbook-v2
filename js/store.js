@@ -335,7 +335,19 @@ const Store = (() => {
         if (evs) cache.events = evs;
       }
       const participants = JSON.parse(localStorage.getItem('cb_eventParticipants'));
-      if (participants) cache.eventParticipants = participants;
+      if (participants) {
+        // Merge local fallback entries without overwriting DB-fetched records.
+        const mergedParticipants = [...(cache.eventParticipants || [])];
+        participants.forEach(lp => {
+          const exists = mergedParticipants.some(dp =>
+            (dp.id && lp.id && dp.id === lp.id) ||
+            (String(dp.eventId || '').toLowerCase().trim() === String(lp.eventId || '').toLowerCase().trim() &&
+             String(dp.userEmail || '').toLowerCase().trim() === String(lp.userEmail || '').toLowerCase().trim())
+          );
+          if (!exists) mergedParticipants.push(lp);
+        });
+        cache.eventParticipants = mergedParticipants;
+      }
       const locks = JSON.parse(localStorage.getItem('cb_pendingLocks'));
       if (locks) localState.pendingLocks = locks;
     } catch (e) { }
@@ -524,15 +536,50 @@ const Store = (() => {
     // 1. Resolve event ID (handle string fallbacks from bookings-based reconstruction)
     let normalizedEventId = Number(eventId);
     if (isNaN(normalizedEventId)) {
-      console.log('Non-numeric eventId detected, trying to find formal event from name/date fallback');
+      console.log('Non-numeric eventId detected, resolving formal event ID');
       const events = get('events') || [];
-      const ev = events.find(e => String(e.id) === String(eventId));
-      if (ev) {
-        // Look for a formal event with the same name and date that HAS a numeric property
-        const formal = events.find(e => !isNaN(Number(e.id)) && e.name === ev.name && e.date === ev.date);
-        if (formal) {
-          normalizedEventId = Number(formal.id);
-          console.log('Resolved fallback ID to formal ID:', normalizedEventId);
+      const selected = events.find(e => String(e.id) === String(eventId));
+      const isFormalId = id => !isNaN(Number(id));
+      const sameEvent = (a, b) =>
+        a && b &&
+        a.name === b.name &&
+        a.date === b.date &&
+        a.start === b.start &&
+        a.end === b.end &&
+        a.type === b.type;
+
+      // Fast path: formal event already available in local cache
+      if (selected) {
+        const localFormal = events.find(e => isFormalId(e.id) && sameEvent(e, selected));
+        if (localFormal) {
+          normalizedEventId = Number(localFormal.id);
+          console.log('Resolved fallback ID to local formal ID:', normalizedEventId);
+        }
+      }
+
+      // Fallback path: ask DB for formal event when local tab only has reconstructed event
+      if (isNaN(normalizedEventId) && selected && window.supabaseClient) {
+        try {
+          const { data: dbMatches, error: findErr } = await supabaseClient
+            .from('events')
+            .select('id,name,date,start_time,end_time,type')
+            .eq('name', selected.name)
+            .eq('date', selected.date)
+            .eq('type', selected.type);
+
+          if (!findErr && dbMatches && dbMatches.length) {
+            const exact = dbMatches.find(d =>
+              String((d.start_time || '').slice(0, 5)) === String(selected.start || '') &&
+              String((d.end_time || '').slice(0, 5)) === String(selected.end || '')
+            );
+            const picked = exact || dbMatches[0];
+            if (picked && !isNaN(Number(picked.id))) {
+              normalizedEventId = Number(picked.id);
+              console.log('Resolved fallback ID to DB formal ID:', normalizedEventId);
+            }
+          }
+        } catch (resolveErr) {
+          console.warn('Formal event ID DB resolution failed:', resolveErr);
         }
       }
     }
