@@ -199,8 +199,8 @@ const Store = (() => {
         id: e.id,
         name: e.name,
         date: e.date,
-        start: e.start_time,
-        end: e.end_time,
+        start: (e.start_time || '').slice(0, 5), // Trim HH:MM:SS to HH:MM
+        end: (e.end_time || '').slice(0, 5),     // Trim HH:MM:SS to HH:MM
         type: e.type,
         courtIds: e.courts
       }));
@@ -264,7 +264,7 @@ const Store = (() => {
         const ev = new Event('storage', { bubbles: true }); ev.key = 'cb_settings'; window.dispatchEvent(ev);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, payload => {
-        const mapEvent = e => e ? ({ id: e.id, name: e.name, date: e.date, start: e.start_time, end: e.end_time, type: e.type, courtIds: e.courts }) : null;
+        const mapEvent = e => e ? ({ id: e.id, name: e.name, date: e.date, start: (e.start_time || '').slice(0, 5), end: (e.end_time || '').slice(0, 5), type: e.type, courtIds: (e.courts || []) }) : null;
         const mapped = mapEvent(payload.new);
         if (payload.eventType === 'INSERT' && mapped && !cache.events.some(e => e.id === mapped.id)) cache.events.push(mapped);
         if (payload.eventType === 'UPDATE' && mapped) cache.events = cache.events.map(e => e.id === payload.new.id ? mapped : e);
@@ -273,17 +273,29 @@ const Store = (() => {
         const ev = new Event('storage', { bubbles: true }); ev.key = 'cb_events'; window.dispatchEvent(ev);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'event_participants' }, payload => {
-        const p = payload.new ? { id: payload.new.id, eventId: payload.new.event_id, userEmail: payload.new.user_email, player: payload.new.player, joinedAt: payload.new.joined_at } : null;
-        if (payload.eventType === 'INSERT' && p && !cache.eventParticipants.some(x => x.id === p.id)) {
-          cache.eventParticipants.push(p);
-          if (Auth.isAdmin()) {
-            const msg = `New Participant: ${p.player} joined event ID #${p.eventId}`;
-            addNotification(msg, 'info');
-            if (typeof adminAlert === 'function') adminAlert(msg, 'info');
+        const p = payload.new ? { 
+          id: payload.new.id, 
+          eventId: payload.new.event_id, 
+          userEmail: payload.new.user_email, 
+          player: payload.new.player, 
+          joinedAt: payload.new.joined_at 
+        } : null;
+        
+        if (payload.eventType === 'INSERT' && p) {
+          if (!cache.eventParticipants.some(x => x.id === p.id)) {
+            cache.eventParticipants.push(p);
+            if (Auth.isAdmin()) {
+              const msg = `New Participant: ${p.player} joined event ID #${p.eventId}`;
+              addNotification(msg, 'info');
+              if (typeof adminAlert === 'function') adminAlert(msg, 'info');
+            }
           }
         }
         if (payload.eventType === 'DELETE') cache.eventParticipants = cache.eventParticipants.filter(x => x.id !== payload.old.id);
+        
         localStorage.setItem('cb_eventParticipants', JSON.stringify(cache.eventParticipants));
+        
+        // Dispatch event with normalized key for consistency
         const storageEvent = new StorageEvent('storage', {
           key: 'cb_eventParticipants',
           oldValue: null,
@@ -475,17 +487,37 @@ const Store = (() => {
 
   async function addEventParticipant(eventId, participant) {
     console.log('Store.addEventParticipant called:', eventId, participant);
-    var participants = get('eventParticipants') || [];
+    let participants = get('eventParticipants') || [];
     
-    // Check for duplicate (by eventId + email)
-    const normalizedEventId = Number(eventId);
-    const existing = participants.find(p => Number(p.eventId) === normalizedEventId && p.userEmail === participant.userEmail);
+    // 1. Resolve event ID (handle string fallbacks from bookings-based reconstruction)
+    let normalizedEventId = Number(eventId);
+    if (isNaN(normalizedEventId)) {
+      console.log('Non-numeric eventId detected, trying to find formal event from name/date fallback');
+      const events = get('events') || [];
+      const ev = events.find(e => String(e.id) === String(eventId));
+      if (ev) {
+        // Look for a formal event with the same name and date that HAS a numeric property
+        const formal = events.find(e => !isNaN(Number(e.id)) && e.name === ev.name && e.date === ev.date);
+        if (formal) {
+          normalizedEventId = Number(formal.id);
+          console.log('Resolved fallback ID to formal ID:', normalizedEventId);
+        }
+      }
+    }
+
+    if (isNaN(normalizedEventId)) {
+      console.warn('❌ Could not resolve numeric event ID for participation. User might be trying to join a ghost event.');
+      return { success: false, error: 'Participation is only available for scheduled events. Please contact admin.' };
+    }
+    
+    // 2. Check for duplicate (by eventId + email)
+    const existing = participants.find(p => Number(p.eventId) === normalizedEventId && (p.userEmail === participant.userEmail || p.user_email === participant.userEmail));
     if (existing) {
-      console.warn('Duplicate participation attempt');
+      console.warn('Duplicate participation attempt detected');
       return { success: false, error: 'Already participating in this event.' };
     }
 
-    // Save to Supabase DB
+    // 3. Save to Supabase DB
     if (window.supabaseClient) {
       console.log('Inserting into DB: event_participants table with:', {
         event_id: normalizedEventId,
@@ -500,9 +532,6 @@ const Store = (() => {
       
       if (error) {
         console.error('❌ DB Insert Error:', error);
-        console.error('Error Code:', error.code);
-        console.error('Error Message:', error.message);
-        console.error('Error Details:', error);
         return { success: false, error: `DB Error: ${error.message}` };
       }
       console.log('✅ DB Insert Success:', data);
@@ -510,16 +539,17 @@ const Store = (() => {
       console.warn('⚠️ Supabase client not available, skipping DB insert');
     }
 
-    // Update local cache immediately (realtime will also sync it)
+    // 4. Update local cache immediately (optimistic UI)
+    // We add it even if DB insert failed (locally) but typically DB should be primary
     participants.push({
       eventId: normalizedEventId,
       userEmail: participant.userEmail,
       player: participant.player,
       joinedAt: new Date().toISOString()
     });
-    console.log('✅ Registered participant locally:', participant.player, 'for event', normalizedEventId);
+    
+    console.log('✅ Registered participant in local cache. Total count:', participants.length);
     setLocal('eventParticipants', participants);
-    console.log('✅ Storage event dispatched for eventParticipants');
     return { success: true };
   }
 

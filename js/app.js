@@ -159,7 +159,6 @@ function renderEventsList() {
 async function joinEvent(eventId) {
   console.log('joinEvent called for ID:', eventId);
   const events = Store.get('events') || [];
-  console.log('Available events in store:', events.length);
   const ev = events.find(e => String(e.id) === String(eventId));
   
   if (!ev) {
@@ -168,7 +167,6 @@ async function joinEvent(eventId) {
   }
 
   const today = new Date().toISOString().split('T')[0];
-  console.log('Comparing event date:', ev.date, 'with today:', today);
   if (ev.date < today) {
     console.warn('Event has passed');
     return showAppAlert('error', 'This event has already passed.');
@@ -176,7 +174,6 @@ async function joinEvent(eventId) {
 
   const auth = Auth.get();
   const user = auth?.user;
-  console.log('Current user session:', user ? user.email : 'None');
   
   const userEmail = user?.email || (prompt('Enter your email to participate:') || '').trim();
   const playerName = user?.email ? (user.email.split('@')[0]) : (prompt('Enter your name:') || '').trim();
@@ -187,17 +184,18 @@ async function joinEvent(eventId) {
   }
 
   showAppAlert('info', 'Registering participation...');
-  console.log('Attempting Store.addEventParticipant...');
   const res = await Store.addEventParticipant(eventId, { userEmail, player: playerName });
   console.log('Store.addEventParticipant result:', res);
 
   if (!res.success) {
     console.error('❌ Join failed:', res.error);
-    showAppAlert('error', `❌ Could not join: ${res.error || 'Unknown error'}`);
+    showAppAlert('error', `❌ ${res.error || 'Could not join.'}`);
     return;
   }
 
-  showAppAlert('success', `✅ You are now participating in "${ev.name}". The admin has been notified.`);
+  showAppAlert('success', `✅ You are now participating in "${ev.name}".`);
+  
+  // Force immediate local update
   renderEventsList();
 }
 
