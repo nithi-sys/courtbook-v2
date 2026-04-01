@@ -541,22 +541,51 @@ function renderEvents() {
       return false;
     });
 
-    var participantsCell = eventParticipants.length
-      ? eventParticipants.map(function (p) {
-        return '<span class="badge badge-neutral" style="margin:2px 4px 2px 0;display:inline-block">' + p.player + '</span>';
-      }).join('')
-      : '<span style="color:var(--muted);font-size:0.75rem">—</span>';
-
     return '<tr>' +
       '<td><strong>' + e.name + '</strong></td>' +
       '<td>' + courtNames + '</td>' +
-      '<td>' + participantsCell + '</td>' +
       '<td class="td-mono">' + e.date + '</td>' +
       '<td class="td-mono">' + e.start + '–' + e.end + '</td>' +
       '<td><span class="badge badge-accent">' + e.type + '</span></td>' +
       '<td><button class="btn btn-sm btn-danger" onclick="deleteEvent(' + i + ')">Remove</button></td>' +
       '</tr>';
-  }).join('') || '<tr><td colspan="7"><div class="empty-state">No events scheduled.</div></td></tr>';
+  }).join('') || '<tr><td colspan="6"><div class="empty-state">No events scheduled.</div></td></tr>';
+
+  var participantsBody = document.getElementById('eventParticipantsBody');
+  if (participantsBody) {
+    const pRows = allParticipants.map(function (p) {
+      const pRef = String(p.eventRef || '').toLowerCase().trim();
+      const pId = String(p.eventId || p.event_id || '').toLowerCase().trim();
+      const pKey = String(p.eventKey || '').trim();
+      var ev = null;
+
+      if (pRef) ev = events.find(x => String(x.id || '').toLowerCase().trim() === pRef);
+      if (!ev && pId) ev = events.find(x => String(x.id || '').toLowerCase().trim() === pId);
+      if (!ev && pKey) {
+        ev = events.find(x => [
+          String(x.name || '').trim().toLowerCase(),
+          String(x.date || '').trim(),
+          String(x.start || '').trim(),
+          String(x.end || '').trim(),
+          String(x.type || '').trim().toLowerCase()
+        ].join('|') === pKey);
+      }
+
+      var eventLabel = ev
+        ? (ev.name + ' (' + ev.date + ' ' + ev.start + '–' + ev.end + ')')
+        : ((p.eventName && p.eventDate) ? (p.eventName + ' (' + p.eventDate + ' ' + (p.eventStart || '--:--') + '–' + (p.eventEnd || '--:--') + ')') : 'Unknown Event');
+      var email = p.userEmail || p.user_email || '—';
+      var joined = p.joinedAt || p.joined_at;
+      var joinedText = joined ? new Date(joined).toLocaleString() : '—';
+      return '<tr>' +
+        '<td>' + eventLabel + '</td>' +
+        '<td><strong>' + (p.player || 'user') + '</strong></td>' +
+        '<td>' + email + '</td>' +
+        '<td class="td-mono">' + joinedText + '</td>' +
+        '</tr>';
+    });
+    participantsBody.innerHTML = pRows.join('') || '<tr><td colspan="4"><div class="empty-state">No participants joined yet.</div></td></tr>';
+  }
 
   var wrap = document.getElementById('eventCourtPicker');
   if (wrap) {
