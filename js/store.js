@@ -671,7 +671,6 @@ const Store = (() => {
       eventEnd: sourceEvent.end,
       eventType: sourceEvent.type
     } : {};
-    const eventRef = String(eventId || '').toLowerCase().trim();
     const eventKey = sourceEvent ? [
       String(sourceEvent.name || '').trim().toLowerCase(),
       String(sourceEvent.date || '').trim(),
@@ -680,126 +679,12 @@ const Store = (() => {
       String(sourceEvent.type || '').trim().toLowerCase()
     ].join('|') : '';
     
-    // 1. Resolve event ID (handle string fallbacks from bookings-based reconstruction)
-    let normalizedEventId = Number(eventId);
-    if (isNaN(normalizedEventId)) {
-      console.log('Non-numeric eventId detected, resolving formal event ID');
-      const events = get('events') || [];
-      const selected = events.find(e => String(e.id) === String(eventId));
-      const isFormalId = id => !isNaN(Number(id));
-      const sameEvent = (a, b) =>
-        a && b &&
-        a.name === b.name &&
-        a.date === b.date &&
-        a.start === b.start &&
-        a.end === b.end &&
-        a.type === b.type;
-
-      // Fast path: formal event already available in local cache
-      if (selected) {
-        const localFormal = events.find(e => isFormalId(e.id) && sameEvent(e, selected));
-        if (localFormal) {
-          normalizedEventId = Number(localFormal.id);
-          console.log('Resolved fallback ID to local formal ID:', normalizedEventId);
-        }
-      }
-
-      // Fallback path: ask DB for formal event when local tab only has reconstructed event
-      if (isNaN(normalizedEventId) && selected && window.supabaseClient) {
-        try {
-          const { data: dbMatches, error: findErr } = await supabaseClient
-            .from('events')
-            .select('id,name,date,start_time,end_time,type')
-            .eq('name', selected.name)
-            .eq('date', selected.date)
-            .eq('type', selected.type);
-
-          if (!findErr && dbMatches && dbMatches.length) {
-            const exact = dbMatches.find(d =>
-              String((d.start_time || '').slice(0, 5)) === String(selected.start || '') &&
-              String((d.end_time || '').slice(0, 5)) === String(selected.end || '')
-            );
-            const picked = exact || dbMatches[0];
-            if (picked && !isNaN(Number(picked.id))) {
-              normalizedEventId = Number(picked.id);
-              console.log('Resolved fallback ID to DB formal ID:', normalizedEventId);
-            }
-          }
-        } catch (resolveErr) {
-          console.warn('Formal event ID DB resolution failed:', resolveErr);
-        }
-      }
-    }
-
-    if (isNaN(normalizedEventId)) {
-      console.warn('⚠️ Could not resolve numeric event ID. Falling back to string ID for local sync.');
-      normalizedEventId = eventId; // Use the string ID (ev_...) as fallback
-    }
-    
-    // 2. Check for duplicate (by eventId + email)
-    const existing = participants.some(p => {
-      const sameEmail = String(p.userEmail || p.user_email).toLowerCase() === String(participant.userEmail).toLowerCase();
-      if (!sameEmail) return false;
-      if (eventKey && String(p.eventKey || '') === eventKey) return true;
-      return String(p.eventId || p.event_id) === String(normalizedEventId);
-    });
-    if (existing) {
-      console.log('User already participating locally.');
-      return { success: true, message: 'Already joined.' };
-    }
-
-    // 3. Ensure we have a numeric event id for the DB. If not, try to resolve from DB or create event record when possible.
-    if (window.supabaseClient && isNaN(Number(normalizedEventId)) && sourceEvent) {
-      try {
-        const { data: resolveMatches, error: resolveErr } = await supabaseClient
-          .from('events')
-          .select('id,name,date,start_time,end_time,type,courts')
-          .eq('name', sourceEvent.name)
-          .eq('date', sourceEvent.date)
-          .eq('type', sourceEvent.type);
-
-        if (!resolveErr && resolveMatches && resolveMatches.length) {
-          const exactMatch = resolveMatches.find(d =>
-            String((d.start_time || '').slice(0, 5)) === String(sourceEvent.start || '') &&
-            String((d.end_time || '').slice(0, 5)) === String(sourceEvent.end || '')
-          );
-          const picked = exactMatch || resolveMatches[0];
-          if (picked && !isNaN(Number(picked.id))) {
-            normalizedEventId = Number(picked.id);
-            console.log('Resolved event ID from DB for participant insert:', normalizedEventId);
-          }
-        }
-
-        if (isNaN(Number(normalizedEventId))) {
-          const { data: insertedEvent, error: insertErr } = await supabaseClient
-            .from('events')
-            .insert([{ name: sourceEvent.name, date: sourceEvent.date, start_time: sourceEvent.start, end_time: sourceEvent.end, type: sourceEvent.type, courts: sourceEvent.courtIds || [] }])
-            .select()
-            .single();
-
-          if (!insertErr && insertedEvent && !isNaN(Number(insertedEvent.id))) {
-            normalizedEventId = Number(insertedEvent.id);
-            console.log('Created DB event for participant link:', normalizedEventId);
-          } else if (insertErr) {
-            console.warn('Could not create DB event in fallback path:', insertErr.message || insertErr);
-          }
-        }
-      } catch (resolveErr) {
-        console.warn('Could not resolve or create event ID for event participant:', resolveErr);
-      }
-    }
-
-    const resolvedEventRef = String(
-      normalizedEventId != null && String(normalizedEventId) !== '' && !isNaN(Number(normalizedEventId))
-        ? normalizedEventId
-        : (eventId != null ? eventId : eventRef)
-    ).toLowerCase().trim();
-
+    // 1. Optimistic Local Cache Update (Immediate)
     const tempId = 'temp_' + Date.now();
     const immediateParticipant = {
-      id: tempId, // Temporary ID satisfies isPersistedParticipant rule
-      eventId: normalizedEventId,
-      eventRef: resolvedEventRef,
+      id: tempId,
+      eventId: eventId,
+      eventRef: String(eventId).toLowerCase().trim(),
       userEmail: participant.userEmail,
       player: participant.player,
       joinedAt: new Date().toISOString(),
@@ -808,73 +693,88 @@ const Store = (() => {
       pendingSync: true
     };
     
-    // OPTIMISTIC LOCAL CACHE INSERT (UI responds instantly!)
-    participants.push(immediateParticipant);
-    setLocal('eventParticipants', participants);
-    
-    const dbInsertAllowed = window.supabaseClient && !isNaN(Number(normalizedEventId));
-    if (!dbInsertAllowed) {
-      // Revert optimism if insert impossible
-      setLocal('eventParticipants', participants.filter(p => p.id !== tempId));
-      return { success: false, error: 'Database not ready to accept sign-ups for this event.' };
+    // Check local duplicate before adding (don't add if already there)
+    const existingLocally = participants.some(p => {
+       const sameEmail = String(p.userEmail || p.user_email || '').toLowerCase().trim() === String(participant.userEmail).toLowerCase().trim();
+       if (!sameEmail) return false;
+       if (eventKey && p.eventKey === eventKey) return true;
+       return String(p.eventId || p.event_id) === String(eventId);
+    });
+
+    if (!existingLocally) {
+      participants.push(immediateParticipant);
+      setLocal('eventParticipants', participants);
+    } else {
+      console.log('Already exists locally, skipping optimism but proceeding to DB check.');
     }
 
-    console.log('Inserting into DB: event_participants table...');
-    const auth = (window.Auth && typeof window.Auth.get === 'function') ? window.Auth.get() : null;
-    const userId = auth?.user?.id;
-
-    // STEP 3: Prevent duplicate entries (Check if already in DB)
-    if (window.supabaseClient && dbInsertAllowed) {
-      try {
-        const { data: existing, error: checkError } = await supabaseClient
-          .from('event_participants')
-          .select('id')
-          .eq('event_id', Number(normalizedEventId))
-          .eq('user_email', participant.userEmail)
-          .limit(1);
-
-        if (!checkError && existing && existing.length > 0) {
-          console.log('Participant already exists in DB. Skipping insert, just syncing.');
-          // Update temp record with real ID from DB
-          const currentParts = get('eventParticipants') || [];
-          const tp = currentParts.find(p => p.id === tempId);
-          if (tp) {
-            tp.id = existing[0].id;
-            tp.pendingSync = false;
-            setLocal('eventParticipants', currentParts);
-          }
-          return { success: true, message: 'Already joined.' };
-        }
-      } catch (err) {
-        console.warn('Duplicate check failed, proceeding with insert anyway:', err);
+    // 2. Resolve numeric event ID for DB
+    let normalizedEventId = Number(eventId);
+    if (isNaN(normalizedEventId)) {
+      const events = get('events') || [];
+      const selected = events.find(e => String(e.id) === String(eventId));
+      if (selected && window.supabaseClient) {
+        try {
+          const { data: dbMatches } = await supabaseClient
+            .from('events')
+            .select('id')
+            .eq('name', selected.name)
+            .eq('date', selected.date)
+            .eq('start_time', selected.start)
+            .limit(1);
+          if (dbMatches && dbMatches.length) normalizedEventId = Number(dbMatches[0].id);
+        } catch (e) {}
       }
     }
 
-    const { data, error } = await supabaseClient.from('event_participants').insert({
-      event_id: Number(normalizedEventId),
-      user_id: userId,
-      user_email: participant.userEmail,
-      player: participant.player
-    }).select();
+    const dbInsertAllowed = window.supabaseClient && !isNaN(Number(normalizedEventId));
+    if (!dbInsertAllowed) return { success: true }; // Stay optimistic if DB not reachable
 
-    if (error || !data || !data[0] || data[0].id == null) {
-      console.error('❌ DB Insert Error:', error);
-      // Revert optimism
-      const reverted = (get('eventParticipants') || []).filter(p => p.id !== tempId);
-      setLocal('eventParticipants', reverted);
-      return { success: false, error: (error ? error.message : 'Registration did not save.') };
+    // 3. Database Sync
+    try {
+      const auth = (window.Auth && typeof window.Auth.get === 'function') ? window.Auth.get() : null;
+      const userId = auth?.user?.id;
+
+      // Duplicate check in DB
+      const { data: dbExisting } = await supabaseClient
+        .from('event_participants')
+        .select('id')
+        .eq('event_id', normalizedEventId)
+        .eq('user_email', participant.userEmail)
+        .limit(1);
+
+      if (dbExisting && dbExisting.length > 0) {
+        // Just update temp ID to real ID
+        const currentParts = get('eventParticipants') || [];
+        const tp = currentParts.find(p => p.id === tempId);
+        if (tp) {
+          tp.id = dbExisting[0].id;
+          tp.pendingSync = false;
+          setLocal('eventParticipants', currentParts);
+        }
+        return { success: true, message: 'Already joined.' };
+      }
+
+      const { data: inserted, error: insErr } = await supabaseClient.from('event_participants').insert({
+        event_id: normalizedEventId,
+        user_id: userId,
+        user_email: participant.userEmail,
+        player: participant.player
+      }).select();
+
+      if (!insErr && inserted && inserted[0]) {
+        const currentParts = get('eventParticipants') || [];
+        const tp = currentParts.find(p => p.id === tempId);
+        if (tp) {
+          tp.id = inserted[0].id;
+          tp.pendingSync = false;
+          setLocal('eventParticipants', currentParts);
+        }
+      }
+    } catch (err) {
+      console.warn('DB Sync Error:', err);
     }
 
-    // Replace temporary ID with real DB ID
-    const realParts = get('eventParticipants') || [];
-    const thisPart = realParts.find(p => p.id === tempId);
-    if (thisPart) {
-      thisPart.id = data[0].id;
-      thisPart.pendingSync = false;
-      setLocal('eventParticipants', realParts);
-    }
-    
-    console.log('✅ Registered participant in DB & synced to cache.');
     return { success: true };
   }
 

@@ -247,67 +247,30 @@ function renderEventsList() {
 }
 
 async function joinEvent(eventId) {
-  var btn = null;
-  document.querySelectorAll('button.btn-join-event[data-join-event]').forEach(function (b) {
-    try { if (decodeURIComponent(b.getAttribute('data-join-event') || '') === String(eventId)) btn = b; } catch (e) { }
-  });
-
-  if (!btn || btn.disabled) return;
-
-  var events = Store.get('events') || [];
-  var ev = events.find(function (e) { return String(e.id) === String(eventId); });
-  if (!ev) return;
-
   var ident = getIdentityForEventParticipation();
   if (!ident.userEmail || !ident.playerName) return;
 
-  var alreadyJoined = isUserJoinedEvent(eventId, ident.userEmail);
-  btn.disabled = true;
+  const events = Store.get('events') || [];
+  const ev = events.find(e => String(e.id) === String(eventId));
+  if (!ev) return;
 
-  // Find badge and determine next count for optimistic update
-  var badgeId = 'count-badge-' + String(eventId).replace(/[^a-zA-Z0-9_-]/g, '_');
-  var badgeEl = document.getElementById(badgeId);
-  var currentCountStr = badgeEl ? badgeEl.innerText.split(' ')[0] : '0';
-  var currentCount = parseInt(currentCountStr) || 0;
+  const alreadyJoined = isUserJoinedEvent(eventId, ident.userEmail);
 
-  // Optimistic UI toggle for instant feedback
+  // Triggering Store actions (both are now synchronous for optimism at the start)
   if (alreadyJoined) {
-    btn.innerText = 'Participate';
-    btn.classList.replace('btn-success', 'btn-primary');
-    if (badgeEl) badgeEl.innerText = `${Math.max(0, currentCount - 1)} joined`;
+    Store.removeEventParticipant(eventId, ident.userEmail);
+    showAppAlert('info', 'Participation Revoked');
   } else {
-    btn.innerText = 'Joined';
-    btn.classList.replace('btn-primary', 'btn-success');
-    if (badgeEl) badgeEl.innerText = `${currentCount + 1} joined`;
+    Store.addEventParticipant(eventId, {
+      userEmail: ident.userEmail,
+      player: ident.playerName,
+      sourceEvent: ev
+    });
+    showAppAlert('success', 'Joined Successfully!');
   }
 
-  try {
-    if (alreadyJoined) {
-      var resOut = await Store.removeEventParticipant(eventId, ident.userEmail);
-      if (resOut.success) {
-        showAppAlert('info', 'Participation Revoked');
-      } else {
-        showAppAlert('error', resOut.error || 'Failed to revoke participation.');
-      }
-    } else {
-      var resIn = await Store.addEventParticipant(eventId, {
-        userEmail: ident.userEmail,
-        player: ident.playerName,
-        sourceEvent: ev
-      });
-
-      if (resIn.success) {
-        showAppAlert('success', resIn.message === 'Already joined.' ? 'You have already joined!' : 'Joined Successfully!');
-      } else {
-        showAppAlert('error', resIn.error || 'Failed to join event.');
-      }
-    }
-  } catch (err) {
-    console.error('joinEvent error:', err);
-    showAppAlert('error', 'An error occurred during participation sync.');
-  } finally {
-    renderEventsList();
-  }
+  // Immediate UI update reflecting the optimistic changes in Store
+  renderEventsList();
 }
 
 function isCurrentlyBusy(courtId, bookings) {
