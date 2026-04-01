@@ -223,6 +223,13 @@ async function joinEvent(eventId) {
     return;
   }
 
+  const participants = Store.get('eventParticipants') || [];
+  const existingEntry = participants.find(p => {
+    const pEId = String(p.eventId || p.event_id || '').toLowerCase().trim();
+    const pEmail = String(p.userEmail || p.user_email || '').toLowerCase().trim();
+    return pEId === String(eventId).toLowerCase().trim() && pEmail === userEmail.toLowerCase().trim();
+  });
+
   showAppAlert('info', 'Registering participation...');
   // 10. OPTIMISTIC UI: Update button immediately to improve feel
   const isRevoke = !!existingEntry;
