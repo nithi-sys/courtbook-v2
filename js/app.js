@@ -211,91 +211,35 @@ async function joinEvent(eventId) {
       if (decodeURIComponent(b.getAttribute('data-join-event') || '') === String(eventId)) btn = b;
     } catch (e) { }
   });
-  if (btn) {
-    btn.disabled = true;
-    btn.style.opacity = '0.7';
-  }
 
-  const events = Store.get('events') || [];
-  const ev = events.find(e => String(e.id) === String(eventId));
-  
-  if (!ev) {
-    console.error('Event not found for ID:', eventId);
-    renderEventsList();
-    return showAppAlert('error', 'Event not found.');
-  }
+  if (!btn) return;
 
-  const todayStr = new Date().toISOString().split('T')[0];
-  if (ev.date < todayStr) {
-    console.warn('Event has passed');
-    renderEventsList();
-    return showAppAlert('error', 'This event has already passed.');
-  }
+  const card = btn.closest('.event-card-user');
+  const badge = card ? card.querySelector('.event-joined-badge') : null;
+  const isJoined = btn.classList.contains('btn-success');
 
-  const auth = Auth.get();
-  const user = auth?.user;
-  
-  let userEmail = user?.email || localStorage.getItem('cb_guest_email');
-  let playerName = userEmail ? (userEmail.split('@')[0]) : localStorage.getItem('cb_guest_name');
-
-  if (!userEmail) {
-    userEmail = (prompt('Enter your email to participate:') || '').trim();
-    playerName = (prompt('Enter your name:') || '').trim();
-    if (userEmail && playerName) {
-      localStorage.setItem('cb_guest_email', userEmail);
-      localStorage.setItem('cb_guest_name', playerName);
+  if (isJoined) {
+    // Revert to Participation
+    btn.classList.remove('btn-success');
+    btn.classList.add('btn-primary');
+    btn.textContent = 'Participation';
+    btn.title = 'Register for this event';
+    
+    if (badge) {
+      let count = parseInt(badge.textContent) || 0;
+      badge.textContent = Math.max(0, count - 1) + ' joined';
     }
-  }
-  
-  if (!userEmail || !playerName) {
-    console.warn('Participate cancelled: missing user info');
-    renderEventsList();
-    return;
-  }
-
-  const participants = Store.get('eventParticipants') || [];
-  const existingEntry = participants.find(p => {
-    if (!Store.isJoinedParticipant(p)) return false;
-    const pEId = String(p.eventId || p.event_id || '').toLowerCase().trim();
-    const pEmail = String(p.userEmail || p.user_email || '').toLowerCase().trim();
-    return pEId === String(eventId).toLowerCase().trim() && pEmail === userEmail.toLowerCase().trim();
-  });
-
-  showAppAlert('info', existingEntry ? 'Updating your registration…' : 'Registering participation…');
-  const isRevoke = !!existingEntry;
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = isRevoke ? 'Revoking...' : 'Joining...';
-    btn.style.opacity = '0.7';
-  }
-
-  try {
-    let res;
-    if (isRevoke) {
-      res = await Store.removeEventParticipant(eventId, userEmail);
-    } else {
-      res = await Store.addEventParticipant(eventId, { userEmail, player: playerName, sourceEvent: ev });
+  } else {
+    // Change to Joined
+    btn.classList.remove('btn-primary');
+    btn.classList.add('btn-success');
+    btn.textContent = 'Joined';
+    btn.title = 'Click to leave this event';
+    
+    if (badge) {
+      let count = parseInt(badge.textContent) || 0;
+      badge.textContent = (count + 1) + ' joined';
     }
-
-    console.log('Store participation action result:', res);
-
-    if (res.success) {
-      await Store.refreshEventParticipantsFromDb();
-    }
-
-    if (!res.success) {
-      console.error('❌ Action failed:', res.error);
-      showAppAlert('error', `❌ ${res.error || 'Request failed.'}`);
-      renderEventsList();
-      return;
-    }
-
-    showAppAlert('success', isRevoke ? 'Participation Revoked' : 'Joined Successfully!');
-    renderEventsList();
-  } catch (err) {
-    console.error('❌ joinEvent error:', err);
-    showAppAlert('error', '❌ System error joining event.');
-    renderEventsList();
   }
 }
 
