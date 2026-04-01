@@ -447,7 +447,32 @@ const Store = (() => {
           combined.push(s);
         }
       });
-      return combined;
+      const events = cache.events || [];
+      return combined.map(p => {
+        const hasMeta = p.eventKey && p.eventName && p.eventDate && p.eventStart && p.eventEnd;
+        if (hasMeta) return p;
+
+        const ev = events.find(e => String(e.id || '').toLowerCase().trim() === String(p.eventId || p.event_id || '').toLowerCase().trim());
+        if (!ev) return p;
+
+        const derivedKey = [
+          String(ev.name || '').trim().toLowerCase(),
+          String(ev.date || '').trim(),
+          String(ev.start || '').trim(),
+          String(ev.end || '').trim(),
+          String(ev.type || '').trim().toLowerCase()
+        ].join('|');
+
+        return {
+          ...p,
+          eventName: p.eventName || ev.name,
+          eventDate: p.eventDate || ev.date,
+          eventStart: p.eventStart || ev.start,
+          eventEnd: p.eventEnd || ev.end,
+          eventType: p.eventType || ev.type,
+          eventKey: p.eventKey || derivedKey
+        };
+      });
     }
 
     // Settings mappings
@@ -533,6 +558,13 @@ const Store = (() => {
     console.log('Store.addEventParticipant called:', eventId, participant);
     let participants = get('eventParticipants') || [];
     const sourceEvent = participant && participant.sourceEvent ? participant.sourceEvent : null;
+    const eventMeta = sourceEvent ? {
+      eventName: sourceEvent.name,
+      eventDate: sourceEvent.date,
+      eventStart: sourceEvent.start,
+      eventEnd: sourceEvent.end,
+      eventType: sourceEvent.type
+    } : {};
     const eventKey = sourceEvent ? [
       String(sourceEvent.name || '').trim().toLowerCase(),
       String(sourceEvent.date || '').trim(),
@@ -642,7 +674,8 @@ const Store = (() => {
           userEmail: p.user_email,
           player: p.player,
           joinedAt: p.joined_at,
-          eventKey: eventKey
+          eventKey: eventKey,
+          ...eventMeta
         });
       } else {
         // Fallback to local record if we didn't get data back but no hard error occurred
@@ -651,7 +684,8 @@ const Store = (() => {
           userEmail: participant.userEmail,
           player: participant.player,
           joinedAt: new Date().toISOString(),
-          eventKey: eventKey
+          eventKey: eventKey,
+          ...eventMeta
         });
       }
     } else {
@@ -662,7 +696,8 @@ const Store = (() => {
         userEmail: participant.userEmail,
         player: participant.player,
         joinedAt: new Date().toISOString(),
-        eventKey: eventKey
+        eventKey: eventKey,
+        ...eventMeta
       });
     }
 

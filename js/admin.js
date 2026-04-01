@@ -512,6 +512,13 @@ function renderEvents() {
     const eventParticipants = allParticipants.filter(function (p) {
       const pKey = String(p.eventKey || '').trim();
       if (pKey && pKey === eventKey(e)) return true;
+      const pName = String(p.eventName || '').trim();
+      const pDate = String(p.eventDate || '').trim();
+      const pStart = String(p.eventStart || '').trim();
+      const pEnd = String(p.eventEnd || '').trim();
+      if (pName === String(e.name || '').trim() && pDate === String(e.date || '').trim() && pStart === String(e.start || '').trim() && pEnd === String(e.end || '').trim()) {
+        return true;
+      }
       // 1. Direct ID match (most reliable)
       const pId = String(p.eventId || p.event_id || '').toLowerCase().trim();
       const eId = String(e.id || '').toLowerCase().trim();
