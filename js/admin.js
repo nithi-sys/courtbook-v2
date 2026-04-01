@@ -19,40 +19,6 @@ function adminAlert(msg, type) {
   adminAlert._t = setTimeout(function () { el.classList.remove('show'); }, 3200);
 }
 
-function setSchemaWarning(message) {
-  var el = document.getElementById('schemaWarning');
-  if (!el) return;
-  if (!message) {
-    el.style.display = 'none';
-    el.textContent = '';
-    return;
-  }
-  el.textContent = message;
-  el.style.display = 'block';
-}
-
-async function checkSchemaHealth() {
-  if (!window.supabaseClient) return;
-  try {
-    var issues = [];
-    const { error: evErr } = await supabaseClient.from('events').select('id').limit(1);
-    if (evErr && evErr.code === 'PGRST205') issues.push('events');
-    const { error: epErr } = await supabaseClient.from('event_participants').select('id').limit(1);
-    if (epErr && epErr.code === 'PGRST205') issues.push('event_participants');
-
-    if (issues.length) {
-      setSchemaWarning(
-        'Supabase schema cache issue: missing table(s) [' + issues.join(', ') + ']. ' +
-        "Run SQL: NOTIFY pgrst, 'reload schema';"
-      );
-    } else {
-      setSchemaWarning('');
-    }
-  } catch (err) {
-    console.warn('Schema health check failed:', err);
-  }
-}
-
 function v(id) {
   var el = document.getElementById(id);
   return el ? el.value : '';
@@ -527,6 +493,15 @@ function renderEvents() {
   var events = Store.get('events') || [];
   var courts = Store.get('courts') || [];
   var allParticipants = Store.get('eventParticipants') || [];
+  function eventKey(ev) {
+    return [
+      String(ev.name || '').trim().toLowerCase(),
+      String(ev.date || '').trim(),
+      String(ev.start || '').trim(),
+      String(ev.end || '').trim(),
+      String(ev.type || '').trim().toLowerCase()
+    ].join('|');
+  }
 
   document.getElementById('eventTableBody').innerHTML = events.map(function (e, i) {
     var courtNames = (e.courtIds || []).map(function (cid) {
@@ -535,6 +510,8 @@ function renderEvents() {
     }).join(', ') || '—';
 
     const eventParticipants = allParticipants.filter(function (p) {
+      const pKey = String(p.eventKey || '').trim();
+      if (pKey && pKey === eventKey(e)) return true;
       // 1. Direct ID match (most reliable)
       const pId = String(p.eventId || p.event_id || '').toLowerCase().trim();
       const eId = String(e.id || '').toLowerCase().trim();
@@ -1009,7 +986,6 @@ var renders = {
 /* ======== INIT ======== */
 (async function initAdmin() {
   await Store.init();
-  await checkSchemaHealth();
   showModule('userportal');
 })();
 

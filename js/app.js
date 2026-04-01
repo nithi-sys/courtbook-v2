@@ -131,7 +131,16 @@ function renderEventsList() {
   document.getElementById('eventCount').textContent = `${events.length} events`;
 
   const html = events.length ? events.map(e => {
+    const eKey = [
+      String(e.name || '').trim().toLowerCase(),
+      String(e.date || '').trim(),
+      String(e.start || '').trim(),
+      String(e.end || '').trim(),
+      String(e.type || '').trim().toLowerCase()
+    ].join('|');
     const eventParticipants = participants.filter(p => {
+      const pKey = String(p.eventKey || '').trim();
+      if (pKey && pKey === eKey) return true;
       const pId = String(p.eventId || p.event_id || '').toLowerCase().trim();
       const eId = String(e.id || '').toLowerCase().trim();
       if (pId === eId) return true;
@@ -244,7 +253,7 @@ async function joinEvent(eventId) {
     if (isRevoke) {
       res = await Store.removeEventParticipant(eventId, userEmail);
     } else {
-      res = await Store.addEventParticipant(eventId, { userEmail, player: playerName });
+      res = await Store.addEventParticipant(eventId, { userEmail, player: playerName, sourceEvent: ev });
     }
 
     console.log('Store participation action result:', res);

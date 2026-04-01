@@ -532,6 +532,14 @@ const Store = (() => {
   async function addEventParticipant(eventId, participant) {
     console.log('Store.addEventParticipant called:', eventId, participant);
     let participants = get('eventParticipants') || [];
+    const sourceEvent = participant && participant.sourceEvent ? participant.sourceEvent : null;
+    const eventKey = sourceEvent ? [
+      String(sourceEvent.name || '').trim().toLowerCase(),
+      String(sourceEvent.date || '').trim(),
+      String(sourceEvent.start || '').trim(),
+      String(sourceEvent.end || '').trim(),
+      String(sourceEvent.type || '').trim().toLowerCase()
+    ].join('|') : '';
     
     // 1. Resolve event ID (handle string fallbacks from bookings-based reconstruction)
     let normalizedEventId = Number(eventId);
@@ -590,10 +598,12 @@ const Store = (() => {
     }
     
     // 2. Check for duplicate (by eventId + email)
-    const existing = participants.some(p => 
-      String(p.eventId || p.event_id) === String(normalizedEventId) && 
-      String(p.userEmail || p.user_email).toLowerCase() === String(participant.userEmail).toLowerCase()
-    );
+    const existing = participants.some(p => {
+      const sameEmail = String(p.userEmail || p.user_email).toLowerCase() === String(participant.userEmail).toLowerCase();
+      if (!sameEmail) return false;
+      if (eventKey && String(p.eventKey || '') === eventKey) return true;
+      return String(p.eventId || p.event_id) === String(normalizedEventId);
+    });
     if (existing) {
       console.warn('Duplicate participation attempt detected');
       return { success: false, error: 'Already participating in this event.' };
@@ -631,7 +641,8 @@ const Store = (() => {
           eventId: p.event_id,
           userEmail: p.user_email,
           player: p.player,
-          joinedAt: p.joined_at
+          joinedAt: p.joined_at,
+          eventKey: eventKey
         });
       } else {
         // Fallback to local record if we didn't get data back but no hard error occurred
@@ -639,7 +650,8 @@ const Store = (() => {
           eventId: normalizedEventId,
           userEmail: participant.userEmail,
           player: participant.player,
-          joinedAt: new Date().toISOString()
+          joinedAt: new Date().toISOString(),
+          eventKey: eventKey
         });
       }
     } else {
@@ -649,7 +661,8 @@ const Store = (() => {
         eventId: normalizedEventId,
         userEmail: participant.userEmail,
         player: participant.player,
-        joinedAt: new Date().toISOString()
+        joinedAt: new Date().toISOString(),
+        eventKey: eventKey
       });
     }
 
@@ -662,13 +675,24 @@ const Store = (() => {
     let participants = get('eventParticipants') || [];
     const normalizedEId = String(eventId || '').toLowerCase().trim();
     const normalizedEmail = String(userEmail || '').toLowerCase().trim();
+    const evs = get('events') || [];
+    const currentEvent = evs.find(e => String(e.id || '').toLowerCase().trim() === normalizedEId);
+    const currentEventKey = currentEvent ? [
+      String(currentEvent.name || '').trim().toLowerCase(),
+      String(currentEvent.date || '').trim(),
+      String(currentEvent.start || '').trim(),
+      String(currentEvent.end || '').trim(),
+      String(currentEvent.type || '').trim().toLowerCase()
+    ].join('|') : '';
 
     // 1. Remove from local list
     const initialLen = participants.length;
     participants = participants.filter(p => {
       const pEId = String(p.eventId || p.event_id || '').toLowerCase().trim();
       const pEmail = String(p.userEmail || p.user_email || '').toLowerCase().trim();
-      return !(pEId === normalizedEId && pEmail === normalizedEmail);
+      const pKey = String(p.eventKey || '');
+      const sameEvent = (pEId === normalizedEId) || (currentEventKey && pKey === currentEventKey);
+      return !(sameEvent && pEmail === normalizedEmail);
     });
 
     if (participants.length === initialLen) {
