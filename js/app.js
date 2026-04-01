@@ -259,9 +259,9 @@ async function joinEvent(eventId) {
     }
 
     console.log('Store participation action result:', res);
-    
+
     if (res.success) {
-      await Store.init(); // Refresh cache
+      await Store.refreshEventParticipantsFromDb();
     }
 
     if (!res.success) {

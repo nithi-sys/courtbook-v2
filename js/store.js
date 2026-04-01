@@ -136,6 +136,33 @@ const Store = (() => {
     syncChannel = null;
   }
 
+  /** Dedupe participants by DB id or (eventId + email) or matching eventKey + email */
+  function participantRecordsMatch(a, b) {
+    if (!a || !b) return false;
+    if (a.id != null && b.id != null && a.id === b.id) return true;
+    const e1 = String(a.eventId ?? a.event_id ?? '').toLowerCase().trim();
+    const e2 = String(b.eventId ?? b.event_id ?? '').toLowerCase().trim();
+    const u1 = String(a.userEmail ?? a.user_email ?? '').toLowerCase().trim();
+    const u2 = String(b.userEmail ?? b.user_email ?? '').toLowerCase().trim();
+    if (e1 && e2 && e1 === e2 && u1 && u2 && u1 === u2) return true;
+    const k1 = String(a.eventKey || '').trim();
+    const k2 = String(b.eventKey || '').trim();
+    return !!(k1 && k2 && k1 === k2 && u1 && u2 && u1 === u2);
+  }
+
+  function mergeEventParticipantLists(...lists) {
+    const out = [];
+    lists.flat().forEach(p => {
+      if (!p) return;
+      const i = out.findIndex(x => participantRecordsMatch(x, p));
+      if (i === -1) out.push({ ...p });
+      else out[i] = { ...out[i], ...p };
+    });
+    return out;
+  }
+
+  let realtimeChannelStarted = false;
+
   /* ---- Core Initialization ---- */
   async function init() {
     if (!window.supabaseClient) return;
@@ -215,23 +242,35 @@ const Store = (() => {
       localStorage.setItem('cb_events', JSON.stringify(cache.events));
     }
 
-    // 6. Fetch Event Participants from DB (safe — table may not exist yet)
+    // 6. Fetch Event Participants — merge with cache/local (never replace with [] — that wiped joins)
     try {
       const { data: dbParticipants, error: partErr } = await supabaseClient.from('event_participants').select('*');
-      if (!partErr && dbParticipants) {
-        cache.eventParticipants = dbParticipants.map(p => ({
+      let fromLs = [];
+      try {
+        fromLs = JSON.parse(localStorage.getItem('cb_eventParticipants')) || [];
+      } catch (e) {
+        fromLs = [];
+      }
+      if (!partErr && dbParticipants != null) {
+        const mappedDb = dbParticipants.map(p => ({
           id: p.id,
           eventId: p.event_id,
+          eventRef: String(p.event_id != null ? p.event_id : '').toLowerCase().trim(),
           userEmail: p.user_email,
           player: p.player,
           joinedAt: p.joined_at
         }));
+        cache.eventParticipants = mergeEventParticipantLists(mappedDb, cache.eventParticipants || [], fromLs);
+      } else {
+        cache.eventParticipants = mergeEventParticipantLists(cache.eventParticipants || [], fromLs);
       }
     } catch (e) {
       console.log('event_participants table not ready yet:', e);
     }
 
-    supabaseClient.channel('custom-all-channel')
+    if (!realtimeChannelStarted) {
+      realtimeChannelStarted = true;
+      supabaseClient.channel('custom-all-channel')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'courts' }, payload => {
         const mappedCourt = payload.new ? { ...payload.new, baseRate: payload.new.base_rate, maxPlayers: payload.new.max_players, teamSize: payload.new.team_size } : null;
         if (payload.eventType === 'INSERT' && !cache.courts.some(c => c.id === mappedCourt.id)) cache.courts.push(mappedCourt);
@@ -284,6 +323,7 @@ const Store = (() => {
         const p = payload.new ? { 
           id: payload.new.id, 
           eventId: payload.new.event_id, 
+          eventRef: String(payload.new.event_id != null ? payload.new.event_id : '').toLowerCase().trim(),
           userEmail: payload.new.user_email, 
           player: payload.new.player, 
           joinedAt: payload.new.joined_at 
@@ -324,6 +364,7 @@ const Store = (() => {
         window.dispatchEvent(ev);
       })
       .subscribe();
+    }
 
     // Restore local-only transients
     try {
@@ -561,6 +602,33 @@ const Store = (() => {
   }
 
   /* ---- Sync Setters for Database tables ---- */
+  /** Light refresh after join — merges DB + cache + local (does not re-run full init / duplicate realtime). */
+  async function refreshEventParticipantsFromDb() {
+    if (!window.supabaseClient) return;
+    try {
+      const { data, error } = await supabaseClient.from('event_participants').select('*');
+      if (error) return;
+      const mapped = (data || []).map(p => ({
+        id: p.id,
+        eventId: p.event_id,
+        eventRef: String(p.event_id != null ? p.event_id : '').toLowerCase().trim(),
+        userEmail: p.user_email,
+        player: p.player,
+        joinedAt: p.joined_at
+      }));
+      let fromLs = [];
+      try {
+        fromLs = JSON.parse(localStorage.getItem('cb_eventParticipants')) || [];
+      } catch (e) {
+        fromLs = [];
+      }
+      const merged = mergeEventParticipantLists(mapped, cache.eventParticipants || [], fromLs);
+      setLocal('eventParticipants', merged);
+    } catch (e) {
+      console.warn('refreshEventParticipantsFromDb:', e);
+    }
+  }
+
   async function addToWaitlist(courtId, player, email, date, start, end, membership, priority) {
     const court = (get('courts') || []).find(c => c.id == courtId);
     if (!court) return;
@@ -714,6 +782,12 @@ const Store = (() => {
       }
     }
 
+    const resolvedEventRef = String(
+      normalizedEventId != null && String(normalizedEventId) !== '' && !isNaN(Number(normalizedEventId))
+        ? normalizedEventId
+        : (eventId != null ? eventId : eventRef)
+    ).toLowerCase().trim();
+
     const dbInsertAllowed = window.supabaseClient && !isNaN(Number(normalizedEventId));
     if (dbInsertAllowed) {
       console.log('Inserting into DB: event_participants table with:', {
@@ -743,7 +817,7 @@ const Store = (() => {
         participants.push({
           id: p.id,
           eventId: p.event_id,
-          eventRef: eventRef,
+          eventRef: resolvedEventRef,
           userEmail: p.user_email,
           player: p.player,
           joinedAt: p.joined_at,
@@ -753,7 +827,7 @@ const Store = (() => {
       } else {
         participants.push({
           eventId: normalizedEventId,
-          eventRef: eventRef,
+          eventRef: resolvedEventRef,
           userEmail: participant.userEmail,
           player: participant.player,
           joinedAt: new Date().toISOString(),
@@ -765,7 +839,7 @@ const Store = (() => {
       console.warn('⚠️ Supabase insert skipped (client missing or non-numeric ID)');
       participants.push({
         eventId: normalizedEventId,
-        eventRef: eventRef,
+        eventRef: resolvedEventRef,
         userEmail: participant.userEmail,
         player: participant.player,
         joinedAt: new Date().toISOString(),
@@ -1109,7 +1183,7 @@ const Store = (() => {
   }
 
   return {
-    init, get, updateSetting, setLocal, applyBookingInsert,
+    init, get, updateSetting, setLocal, applyBookingInsert, refreshEventParticipantsFromDb,
     calcCost, checkConflict, getSlotPlayerCount,
     getPendingLock, acquireLock, releaseLock,
     applyPromo, addNotification,
