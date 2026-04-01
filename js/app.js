@@ -180,11 +180,10 @@ function renderEventsList() {
 }
 
 async function joinEvent(eventId) {
-  console.log('joinEvent triggered for ID:', eventId);
   const btn = document.getElementById(`btn-join-${eventId}`);
   if (btn) {
     btn.disabled = true;
-    btn.textContent = 'Processing...';
+    btn.style.opacity = '0.7';
   }
 
   const events = Store.get('events') || [];
@@ -192,14 +191,14 @@ async function joinEvent(eventId) {
   
   if (!ev) {
     console.error('Event not found for ID:', eventId);
-    if (btn) { btn.disabled = false; btn.textContent = 'Participate'; }
+    renderEventsList();
     return showAppAlert('error', 'Event not found.');
   }
 
-  const today = new Date().toISOString().split('T')[0];
-  if (ev.date < today) {
+  const todayStr = new Date().toISOString().split('T')[0];
+  if (ev.date < todayStr) {
     console.warn('Event has passed');
-    if (btn) { btn.disabled = true; btn.textContent = 'Event Passed'; }
+    renderEventsList();
     return showAppAlert('error', 'This event has already passed.');
   }
 
@@ -220,7 +219,7 @@ async function joinEvent(eventId) {
   
   if (!userEmail || !playerName) {
     console.warn('Participate cancelled: missing user info');
-    if (btn) { btn.disabled = false; btn.textContent = 'Participate'; }
+    renderEventsList();
     return;
   }
 
