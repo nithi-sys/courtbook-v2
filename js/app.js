@@ -138,6 +138,12 @@ function renderEventsList() {
     const participantNames = eventParticipants.map(p => p.player).join(', ');
     const participantsList = participantNames ? `<div style="font-size:0.75rem;color:var(--muted);margin-top:6px;border-top:1px solid #f3f4f6;padding-top:6px"><strong>Joined:</strong> ${participantNames}</div>` : '';
 
+    const auth = Auth.get();
+    const user = auth?.user;
+    const isJoined = eventParticipants.some(p => String(p.userEmail) === String(user?.email));
+    const btnText = !canJoin ? 'Event Passed' : (isJoined ? 'Already Joined' : 'Participate');
+    const btnClass = isJoined ? 'btn-success' : 'btn-primary';
+
     return `<div class="card card-pad card-accent-top court-card" style="border-left:4px solid #6366f1;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
         <div><strong>${e.name}</strong> <span class="badge badge-accent">${e.type}</span></div>
@@ -147,7 +153,7 @@ function renderEventsList() {
       <div style="font-size:0.85rem;margin-bottom:6px">${e.date} · ${e.start}–${e.end}</div>
       ${participantsList}
       <div style="margin-top:12px">
-        <button class="btn btn-secondary btn-full" ${canJoin ? '' : 'disabled'} onclick="joinEvent('${e.id}')">${canJoin ? 'Participate' : 'Event Passed'}</button>
+        <button id="btn-join-${e.id}" class="btn ${btnClass} btn-full" ${(!canJoin || isJoined) ? 'disabled' : ''} onclick="joinEvent('${e.id}')">${btnText}</button>
       </div>
     </div>`;
   }).join('') : '<div class="empty-state" style="grid-column:1/-1">No upcoming events.</div>';
@@ -157,46 +163,68 @@ function renderEventsList() {
 }
 
 async function joinEvent(eventId) {
-  console.log('joinEvent called for ID:', eventId);
+  console.log('joinEvent triggered for ID:', eventId);
+  const btn = document.getElementById(`btn-join-${eventId}`);
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Processing...';
+  }
+
   const events = Store.get('events') || [];
   const ev = events.find(e => String(e.id) === String(eventId));
   
   if (!ev) {
     console.error('Event not found for ID:', eventId);
+    if (btn) { btn.disabled = false; btn.textContent = 'Participate'; }
     return showAppAlert('error', 'Event not found.');
   }
 
   const today = new Date().toISOString().split('T')[0];
   if (ev.date < today) {
     console.warn('Event has passed');
+    if (btn) { btn.disabled = true; btn.textContent = 'Event Passed'; }
     return showAppAlert('error', 'This event has already passed.');
   }
 
   const auth = Auth.get();
   const user = auth?.user;
   
-  const userEmail = user?.email || (prompt('Enter your email to participate:') || '').trim();
-  const playerName = user?.email ? (user.email.split('@')[0]) : (prompt('Enter your name:') || '').trim();
+  let userEmail = user?.email;
+  let playerName = user?.email ? (user.email.split('@')[0]) : null;
+
+  if (!userEmail) {
+    userEmail = (prompt('Enter your email to participate:') || '').trim();
+    playerName = (prompt('Enter your name:') || '').trim();
+  }
   
   if (!userEmail || !playerName) {
     console.warn('Participate cancelled: missing user info');
+    if (btn) { btn.disabled = false; btn.textContent = 'Participate'; }
     return showAppAlert('error', 'Name and email are required to join.');
   }
 
   showAppAlert('info', 'Registering participation...');
-  const res = await Store.addEventParticipant(eventId, { userEmail, player: playerName });
-  console.log('Store.addEventParticipant result:', res);
+  try {
+    const res = await Store.addEventParticipant(eventId, { userEmail, player: playerName });
+    console.log('Store.addEventParticipant result:', res);
 
-  if (!res.success) {
-    console.error('❌ Join failed:', res.error);
-    showAppAlert('error', `❌ ${res.error || 'Could not join.'}`);
-    return;
+    if (!res.success) {
+      console.error('❌ Join failed:', res.error);
+      showAppAlert('error', `❌ ${res.error || 'Could not join.'}`);
+      if (btn) { btn.disabled = false; btn.textContent = 'Participate'; }
+      return;
+    }
+
+    showAppAlert('success', `✅ You are now participating in "${ev.name}".`);
+    if (btn) { btn.textContent = 'Joined Successfully'; }
+    
+    // Force immediate local update
+    renderEventsList();
+  } catch (err) {
+    console.error('❌ joinEvent error:', err);
+    showAppAlert('error', '❌ System error joining event.');
+    if (btn) { btn.disabled = false; btn.textContent = 'Participate'; }
   }
-
-  showAppAlert('success', `✅ You are now participating in "${ev.name}".`);
-  
-  // Force immediate local update
-  renderEventsList();
 }
 
 function isCurrentlyBusy(courtId, bookings) {
