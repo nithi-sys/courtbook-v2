@@ -161,6 +161,11 @@ const Store = (() => {
     return out;
   }
 
+  /** Only rows saved in `event_participants` (have DB id) count as joined — shown in admin & user UI. */
+  function isPersistedParticipant(p) {
+    return !!(p && p.id != null && String(p.id).trim() !== '');
+  }
+
   let realtimeChannelStarted = false;
 
   /* ---- Core Initialization ---- */
@@ -247,7 +252,7 @@ const Store = (() => {
       const { data: dbParticipants, error: partErr } = await supabaseClient.from('event_participants').select('*');
       let fromLs = [];
       try {
-        fromLs = JSON.parse(localStorage.getItem('cb_eventParticipants')) || [];
+        fromLs = (JSON.parse(localStorage.getItem('cb_eventParticipants')) || []).filter(isPersistedParticipant);
       } catch (e) {
         fromLs = [];
       }
@@ -260,10 +265,13 @@ const Store = (() => {
           player: p.player,
           joinedAt: p.joined_at
         }));
-        cache.eventParticipants = mergeEventParticipantLists(mappedDb, cache.eventParticipants || [], fromLs);
+        cache.eventParticipants = mergeEventParticipantLists(mappedDb, (cache.eventParticipants || []).filter(isPersistedParticipant), fromLs);
       } else {
-        cache.eventParticipants = mergeEventParticipantLists(cache.eventParticipants || [], fromLs);
+        cache.eventParticipants = mergeEventParticipantLists((cache.eventParticipants || []).filter(isPersistedParticipant), fromLs);
       }
+      try {
+        localStorage.setItem('cb_eventParticipants', JSON.stringify(cache.eventParticipants));
+      } catch (e) { }
     } catch (e) {
       console.log('event_participants table not ready yet:', e);
     }
@@ -329,7 +337,7 @@ const Store = (() => {
           joinedAt: payload.new.joined_at 
         } : null;
         
-        if (payload.eventType === 'INSERT' && p) {
+        if (payload.eventType === 'INSERT' && p && isPersistedParticipant(p)) {
           // Robust duplicate check: if any participant (local or DB) exists with same ID or same event/email pair
           const isDuplicate = cache.eventParticipants.some(x => 
             (x.id && x.id === p.id) || 
@@ -340,10 +348,10 @@ const Store = (() => {
           if (!isDuplicate) {
             cache.eventParticipants.push(p);
             // MERGE with localStorage to avoid wiping out other local entries
-            const stored = JSON.parse(localStorage.getItem('cb_eventParticipants')) || [];
+            const stored = (JSON.parse(localStorage.getItem('cb_eventParticipants')) || []).filter(isPersistedParticipant);
             const merged = [...stored];
             if (!merged.some(m => m.id === p.id)) merged.push(p);
-            localStorage.setItem('cb_eventParticipants', JSON.stringify(merged));
+            localStorage.setItem('cb_eventParticipants', JSON.stringify(merged.filter(isPersistedParticipant)));
             
             if (Auth.isAdmin()) {
               const msg = `New Participant: ${p.player} joined event ID #${p.eventId}`;
@@ -379,9 +387,8 @@ const Store = (() => {
       }
       const participants = JSON.parse(localStorage.getItem('cb_eventParticipants'));
       if (participants) {
-        // Merge local fallback entries without overwriting DB-fetched records.
         const mergedParticipants = [...(cache.eventParticipants || [])];
-        participants.forEach(lp => {
+        participants.filter(isPersistedParticipant).forEach(lp => {
           const exists = mergedParticipants.some(dp =>
             (dp.id && lp.id && dp.id === lp.id) ||
             (String(dp.eventId || '').toLowerCase().trim() === String(lp.eventId || '').toLowerCase().trim() &&
@@ -389,7 +396,7 @@ const Store = (() => {
           );
           if (!exists) mergedParticipants.push(lp);
         });
-        cache.eventParticipants = mergedParticipants;
+        cache.eventParticipants = mergedParticipants.filter(isPersistedParticipant);
       }
       const locks = JSON.parse(localStorage.getItem('cb_pendingLocks'));
       if (locks) localState.pendingLocks = locks;
@@ -477,8 +484,8 @@ const Store = (() => {
     }
 
     if (key === 'eventParticipants') {
-      const active = cache.eventParticipants || [];
-      const stored = JSON.parse(localStorage.getItem('cb_eventParticipants')) || [];
+      const active = (cache.eventParticipants || []).filter(isPersistedParticipant);
+      const stored = (JSON.parse(localStorage.getItem('cb_eventParticipants')) || []).filter(isPersistedParticipant);
       // Combine to ensure we have the most recent data possible
       const combined = [...active];
       stored.forEach(s => {
@@ -519,7 +526,7 @@ const Store = (() => {
           eventType: base.eventType || ev.type,
           eventKey: base.eventKey || derivedKey
         };
-      });
+      }).filter(isPersistedParticipant);
     }
 
     // Settings mappings
@@ -618,11 +625,11 @@ const Store = (() => {
       }));
       let fromLs = [];
       try {
-        fromLs = JSON.parse(localStorage.getItem('cb_eventParticipants')) || [];
+        fromLs = (JSON.parse(localStorage.getItem('cb_eventParticipants')) || []).filter(isPersistedParticipant);
       } catch (e) {
         fromLs = [];
       }
-      const merged = mergeEventParticipantLists(mapped, cache.eventParticipants || [], fromLs);
+      const merged = mergeEventParticipantLists(mapped, (cache.eventParticipants || []).filter(isPersistedParticipant), fromLs).filter(isPersistedParticipant);
       setLocal('eventParticipants', merged);
     } catch (e) {
       console.warn('refreshEventParticipantsFromDb:', e);
@@ -789,64 +796,47 @@ const Store = (() => {
     ).toLowerCase().trim();
 
     const dbInsertAllowed = window.supabaseClient && !isNaN(Number(normalizedEventId));
-    if (dbInsertAllowed) {
-      console.log('Inserting into DB: event_participants table with:', {
-        event_id: normalizedEventId,
-        user_email: participant.userEmail,
-        player: participant.player
-      });
-      const auth = Auth.get();
-      const userId = auth?.user?.id;
-
-      const { data, error } = await supabaseClient.from('event_participants').insert({
-        event_id: Number(normalizedEventId),
-        user_id: userId,
-        user_email: participant.userEmail,
-        player: participant.player
-      }).select();
-
-      if (error) {
-        console.error('❌ DB Insert Error:', error);
-        if (error.code !== 'PGRST205' && error.code !== '404') {
-          return { success: false, error: `DB Error: ${error.message}` };
-        }
-      }
-
-      if (data && data[0]) {
-        const p = data[0];
-        participants.push({
-          id: p.id,
-          eventId: p.event_id,
-          eventRef: resolvedEventRef,
-          userEmail: p.user_email,
-          player: p.player,
-          joinedAt: p.joined_at,
-          eventKey: eventKey,
-          ...eventMeta
-        });
-      } else {
-        participants.push({
-          eventId: normalizedEventId,
-          eventRef: resolvedEventRef,
-          userEmail: participant.userEmail,
-          player: participant.player,
-          joinedAt: new Date().toISOString(),
-          eventKey: eventKey,
-          ...eventMeta
-        });
-      }
-    } else {
-      console.warn('⚠️ Supabase insert skipped (client missing or non-numeric ID)');
-      participants.push({
-        eventId: normalizedEventId,
-        eventRef: resolvedEventRef,
-        userEmail: participant.userEmail,
-        player: participant.player,
-        joinedAt: new Date().toISOString(),
-        eventKey: eventKey,
-        ...eventMeta
-      });
+    if (!dbInsertAllowed) {
+      return {
+        success: false,
+        error: 'This event is not ready to accept sign-ups. Refresh the page or ask an admin to re-save the event schedule.'
+      };
     }
+
+    console.log('Inserting into DB: event_participants table with:', {
+      event_id: normalizedEventId,
+      user_email: participant.userEmail,
+      player: participant.player
+    });
+    const auth = Auth.get();
+    const userId = auth?.user?.id;
+
+    const { data, error } = await supabaseClient.from('event_participants').insert({
+      event_id: Number(normalizedEventId),
+      user_id: userId,
+      user_email: participant.userEmail,
+      player: participant.player
+    }).select();
+
+    if (error) {
+      console.error('❌ DB Insert Error:', error);
+      return { success: false, error: error.message || 'Could not save your registration.' };
+    }
+    if (!data || !data[0] || data[0].id == null) {
+      return { success: false, error: 'Registration did not save. Please try again.' };
+    }
+
+    const row = data[0];
+    participants.push({
+      id: row.id,
+      eventId: row.event_id,
+      eventRef: resolvedEventRef,
+      userEmail: row.user_email,
+      player: row.player,
+      joinedAt: row.joined_at,
+      eventKey: eventKey,
+      ...eventMeta
+    });
 
     console.log('✅ Registered participant in local cache. Total count:', participants.length);
     setLocal('eventParticipants', participants);
@@ -1199,6 +1189,7 @@ const Store = (() => {
 
   return {
     init, get, updateSetting, setLocal, applyBookingInsert, refreshEventParticipantsFromDb,
+    isJoinedParticipant: isPersistedParticipant,
     calcCost, checkConflict, getSlotPlayerCount,
     getPendingLock, acquireLock, releaseLock,
     applyPromo, addNotification,

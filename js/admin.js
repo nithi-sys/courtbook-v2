@@ -55,6 +55,39 @@ function checkNewBookingNotifications() {
   });
 }
 
+// Fallback notifier for new event participants.
+var _knownParticipantIds = new Set();
+function primeParticipantNotifier() {
+  try {
+    const current = Store.get('eventParticipants') || [];
+    _knownParticipantIds = new Set(current.map(function (p) { return String(p.id || (p.eventKey + p.userEmail) || p.player); }));
+  } catch (e) {
+    _knownParticipantIds = new Set();
+  }
+}
+
+function checkNewParticipantNotifications() {
+  const participants = Store.get('eventParticipants') || [];
+  let foundNew = false;
+  participants.forEach(function (p) {
+    const id = String(p.id || (p.eventKey + p.userEmail) || p.player);
+    if (_knownParticipantIds.has(id)) return;
+    _knownParticipantIds.add(id);
+    foundNew = true;
+    const msg = 'New Participant: ' + (p.player || 'User') + ' joined ' + (p.eventName || 'an event');
+    adminAlert(msg, 'info');
+    if (Store && typeof Store.addNotification === 'function') {
+      Store.addNotification(msg, 'info');
+    }
+  });
+  if (foundNew) {
+    const activeModule = document.querySelector('.sidebar-item.active');
+    if (activeModule && activeModule.getAttribute('data-mod') === 'events') {
+      if (typeof renderEvents === 'function') renderEvents();
+    }
+  }
+}
+
 function v(id) {
   var el = document.getElementById(id);
   return el ? el.value : '';
@@ -532,7 +565,9 @@ function renderEvents() {
     var storeParticipants = Store.get('eventParticipants') || [];
     var localParticipants = [];
     try {
-      localParticipants = JSON.parse(localStorage.getItem('cb_eventParticipants')) || [];
+      localParticipants = (JSON.parse(localStorage.getItem('cb_eventParticipants')) || []).filter(function (p) {
+        return Store.isJoinedParticipant(p);
+      });
     } catch (e) {
       localParticipants = [];
     }
@@ -1115,13 +1150,15 @@ var renders = {
   await Store.init();
   showModule('userportal');
   primeBookingNotifier();
+  primeParticipantNotifier();
 
   // Real-time synchronization is handled via Store.js (BroadcastChannel and Storage events).
   // No aggressive polling is needed anymore.
 
-  // Booking notification fallback poller (admin popup + notification log).
+  // Notification fallback poller (admin popup + notification log).
   setInterval(function () {
     checkNewBookingNotifications();
+    checkNewParticipantNotifications();
   }, 2000);
 })();
 

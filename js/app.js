@@ -236,6 +236,7 @@ async function joinEvent(eventId) {
 
   const participants = Store.get('eventParticipants') || [];
   const existingEntry = participants.find(p => {
+    if (!Store.isJoinedParticipant(p)) return false;
     const pEId = String(p.eventId || p.event_id || '').toLowerCase().trim();
     const pEmail = String(p.userEmail || p.user_email || '').toLowerCase().trim();
     return pEId === String(eventId).toLowerCase().trim() && pEmail === userEmail.toLowerCase().trim();
