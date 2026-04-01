@@ -132,8 +132,8 @@ function renderEventsList() {
 
   const html = events.length ? events.map(e => {
     const eventParticipants = participants.filter(p => {
-      const pId = String(p.eventId || p.event_id || '');
-      const eId = String(e.id || '');
+      const pId = String(p.eventId || p.event_id || '').toLowerCase().trim();
+      const eId = String(e.id || '').toLowerCase().trim();
       return pId === eId;
     });
     const courtNames = (Store.get('courts') || []).filter(c => (e.courtIds || []).some(cid => Number(cid) === Number(c.id))).map(c => c.name).join(', ');

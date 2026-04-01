@@ -502,8 +502,8 @@ function renderEvents() {
 
     const eventParticipants = allParticipants.filter(function (p) {
       // Use both possible ID fields and ensure string comparison for reliability
-      const pId = String(p.eventId || p.event_id || '');
-      const eId = String(e.id || '');
+      const pId = String(p.eventId || p.event_id || '').toLowerCase().trim();
+      const eId = String(e.id || '').toLowerCase().trim();
       return pId === eId;
     });
 

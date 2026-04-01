@@ -285,11 +285,18 @@ const Store = (() => {
           // Robust duplicate check: if any participant (local or DB) exists with same ID or same event/email pair
           const isDuplicate = cache.eventParticipants.some(x => 
             (x.id && x.id === p.id) || 
-            (String(x.eventId) === String(p.eventId) && String(x.userEmail) === String(p.userEmail))
+            (String(x.eventId || '').toLowerCase().trim() === String(p.eventId || '').toLowerCase().trim() && 
+             String(x.userEmail || '').toLowerCase().trim() === String(p.userEmail || '').toLowerCase().trim())
           );
           
           if (!isDuplicate) {
             cache.eventParticipants.push(p);
+            // MERGE with localStorage to avoid wiping out other local entries
+            const stored = JSON.parse(localStorage.getItem('cb_eventParticipants')) || [];
+            const merged = [...stored];
+            if (!merged.some(m => m.id === p.id)) merged.push(p);
+            localStorage.setItem('cb_eventParticipants', JSON.stringify(merged));
+            
             if (Auth.isAdmin()) {
               const msg = `New Participant: ${p.player} joined event ID #${p.eventId}`;
               addNotification(msg, 'info');
@@ -299,15 +306,16 @@ const Store = (() => {
         }
         if (payload.eventType === 'DELETE') {
           cache.eventParticipants = cache.eventParticipants.filter(x => x.id !== payload.old.id);
+          const stored = JSON.parse(localStorage.getItem('cb_eventParticipants')) || [];
+          const filtered = stored.filter(x => x.id !== payload.old.id);
+          localStorage.setItem('cb_eventParticipants', JSON.stringify(filtered));
         }
-        
-        localStorage.setItem('cb_eventParticipants', JSON.stringify(cache.eventParticipants));
         
         // Dispatch event with normalized key for consistency
         const storageEvent = new StorageEvent('storage', {
           key: 'cb_eventParticipants',
           oldValue: null,
-          newValue: JSON.stringify(cache.eventParticipants),
+          newValue: localStorage.getItem('cb_eventParticipants'),
           url: window.location.href,
           storageArea: localStorage
         });
@@ -419,7 +427,11 @@ const Store = (() => {
       // Combine to ensure we have the most recent data possible
       const combined = [...active];
       stored.forEach(s => {
-        if (!combined.some(c => (c.id && c.id === s.id) || (String(c.eventId) === String(s.eventId) && String(c.userEmail) === String(s.userEmail)))) {
+        if (!combined.some(c => 
+          (c.id && c.id === s.id) || 
+          (String(c.eventId || '').toLowerCase().trim() === String(s.eventId || '').toLowerCase().trim() && 
+           String(c.userEmail || '').toLowerCase().trim() === String(s.userEmail || '').toLowerCase().trim())
+        )) {
           combined.push(s);
         }
       });
