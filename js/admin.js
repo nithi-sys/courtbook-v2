@@ -635,9 +635,11 @@ function renderEvents() {
 
   var wrap = document.getElementById('eventCourtPicker');
   if (wrap) {
+    var checkedIds = Array.from(wrap.querySelectorAll('input:checked')).map(function(el) { return String(el.value); });
     wrap.innerHTML = courts.filter(c => c.active).map(function (c) {
+      var isChecked = checkedIds.indexOf(String(c.id)) > -1 ? 'checked' : '';
       return '<label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;padding:4px 0">' +
-        '<input type="checkbox" value="' + c.id + '" style="width:auto;margin:0"> ' +
+        '<input type="checkbox" value="' + c.id + '" style="width:auto;margin:0" ' + isChecked + '> ' +
         c.name + ' (' + c.sport + ')' +
         '</label>';
     }).join('') || '<div style="font-size:0.82rem;color:var(--muted)">No active courts available</div>';
@@ -1074,14 +1076,8 @@ var renders = {
   showModule('userportal');
   primeBookingNotifier();
 
-  // Background sync guard: keep Events module updated even if cross-tab events are dropped.
-  setInterval(function () {
-    var activeModule = document.querySelector('.sidebar-item.active');
-    if (!activeModule) return;
-    if (activeModule.getAttribute('data-mod') === 'events' && typeof renderEvents === 'function') {
-      renderEvents();
-    }
-  }, 1500);
+  // Real-time synchronization is handled via Store.js (BroadcastChannel and Storage events).
+  // No aggressive polling is needed anymore.
 
   // Booking notification fallback poller (admin popup + notification log).
   setInterval(function () {
