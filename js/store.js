@@ -820,11 +820,36 @@ const Store = (() => {
     }
 
     console.log('Inserting into DB: event_participants table...');
-    const auth = Auth.get();
+    const auth = (window.Auth && typeof window.Auth.get === 'function') ? window.Auth.get() : null;
     const userId = auth?.user?.id;
 
-    // We do NOT block the return for the database update if we don't want to.
-    // But to keep error handling safe, we'll await it:
+    // STEP 3: Prevent duplicate entries (Check if already in DB)
+    if (window.supabaseClient && dbInsertAllowed) {
+      try {
+        const { data: existing, error: checkError } = await supabaseClient
+          .from('event_participants')
+          .select('id')
+          .eq('event_id', Number(normalizedEventId))
+          .eq('user_email', participant.userEmail)
+          .limit(1);
+
+        if (!checkError && existing && existing.length > 0) {
+          console.log('Participant already exists in DB. Skipping insert, just syncing.');
+          // Update temp record with real ID from DB
+          const currentParts = get('eventParticipants') || [];
+          const tp = currentParts.find(p => p.id === tempId);
+          if (tp) {
+            tp.id = existing[0].id;
+            tp.pendingSync = false;
+            setLocal('eventParticipants', currentParts);
+          }
+          return { success: true, message: 'Already joined.' };
+        }
+      } catch (err) {
+        console.warn('Duplicate check failed, proceeding with insert anyway:', err);
+      }
+    }
+
     const { data, error } = await supabaseClient.from('event_participants').insert({
       event_id: Number(normalizedEventId),
       user_id: userId,
@@ -849,7 +874,7 @@ const Store = (() => {
       setLocal('eventParticipants', realParts);
     }
     
-    console.log('✅ Registered participant in DB & synced to cache. Total count:', participants.length);
+    console.log('✅ Registered participant in DB & synced to cache.');
     return { success: true };
   }
 

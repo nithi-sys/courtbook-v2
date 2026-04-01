@@ -229,36 +229,30 @@ async function joinEvent(eventId) {
   }
   if (!userEmail || !playerName) return;
 
-  let participants = [];
-  try { participants = JSON.parse(localStorage.getItem('cb_eventParticipants')) || []; } catch(e) {}
-
   const isJoined = btn.classList.contains('btn-success');
   
   if (isJoined) {
-    // Remove from local storage
-    participants = participants.filter(p => String(p.eventId) !== String(eventId) || p.userEmail !== userEmail);
-    localStorage.setItem('cb_eventParticipants', JSON.stringify(participants));
+    // REVOKE participation (DB Sync)
+    const res = await Store.removeEventParticipant(eventId, userEmail);
+    if (!res.success && res.error) {
+      console.warn('DB Revoke Error:', res.error);
+    }
     showAppAlert('info', 'Participation Revoked');
   } else {
-    // Add to local storage
-    const newParticipant = {
-      id: 'local_mock_' + Date.now(),
-      eventId: String(eventId),
+    // JOIN event (DB Sync with Duplicate Prevention)
+    const res = await Store.addEventParticipant(eventId, {
       userEmail: userEmail,
-      player: playerName,
-      joinedAt: new Date().toISOString(),
-      eventRef: ev.id,
-      eventName: ev.name,
-      eventDate: ev.date,
-      eventStart: ev.start,
-      eventEnd: ev.end
-    };
-    participants.push(newParticipant);
-    localStorage.setItem('cb_eventParticipants', JSON.stringify(participants));
-    showAppAlert('success', 'Joined Successfully!');
+      player: playerName
+    });
+    
+    if (res.success) {
+      showAppAlert('success', res.message === 'Already joined.' ? 'You have already joined!' : 'Joined Successfully!');
+    } else {
+      showAppAlert('error', res.error || 'Failed to join event.');
+    }
   }
   
-  // Refresh the UI to reflect new counts & button states globally
+  // Storage listener handles global re-render, but we do it manually for instant response
   renderEventsList();
 }
 
