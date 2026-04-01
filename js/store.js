@@ -524,8 +524,12 @@ const Store = (() => {
         user_email: participant.userEmail,
         player: participant.player
       });
+      const auth = Auth.get();
+      const userId = auth?.user?.id;
+      
       const { data, error } = await supabaseClient.from('event_participants').insert({
         event_id: normalizedEventId,
+        user_id: userId,
         user_email: participant.userEmail,
         player: participant.player
       }).select();

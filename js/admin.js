@@ -934,11 +934,14 @@ function renderUserPortal() {
 
   var tb = bookings.filter(b => b.date === todayStr && b.status !== 'cancelled');
   var busyCount = courts.filter(c => isCurrentlyBusy(c.id, bookings)).length;
+  var totalParticipants = (Store.get('eventParticipants') || []).length;
+  
   document.getElementById('upStatTotal').textContent = courts.length;
   document.getElementById('upStatAvail').textContent = courts.length - busyCount;
   document.getElementById('upStatBooked').textContent = busyCount;
   document.getElementById('upStatToday').textContent = tb.length;
   document.getElementById('upStatRevenue').textContent = 'Rs.' + tb.reduce((s, b) => s + (b.cost || 0), 0);
+  document.getElementById('upStatParticipants').textContent = totalParticipants;
 }
 
 /* ======== RENDER MAP ======== */

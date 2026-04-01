@@ -282,6 +282,7 @@ end $$;
 create table if not exists public.event_participants (
   id          bigserial primary key,
   event_id    bigint references public.events(id) on delete cascade not null,
+  user_id     uuid references auth.users(id) on delete set null,
   user_email  text not null,
   player      text not null,
   joined_at   timestamptz default now()
