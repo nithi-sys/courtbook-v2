@@ -466,33 +466,41 @@ const Store = (() => {
   }
 
   async function addEventParticipant(eventId, participant) {
+    console.log('Store.addEventParticipant called:', eventId, participant);
     var participants = get('eventParticipants') || [];
+    
     // Check for duplicate (by eventId + email)
-    if (participants.find(p => String(p.eventId) === String(eventId) && p.userEmail === participant.userEmail)) {
+    const normalizedEventId = Number(eventId);
+    const existing = participants.find(p => Number(p.eventId) === normalizedEventId && p.userEmail === participant.userEmail);
+    if (existing) {
+      console.warn('Duplicate participation attempt');
       return { success: false, error: 'Already participating in this event.' };
     }
 
     // Save to Supabase DB
     if (window.supabaseClient) {
+      console.log('Inserting into DB: event_participants table');
       const { error } = await supabaseClient.from('event_participants').insert({
-        event_id: Number(eventId),
+        event_id: normalizedEventId,
         user_email: participant.userEmail,
         player: participant.player
       });
       if (error) {
-        console.error('Event participant insert error:', error);
+        console.error('DB Insert Error:', error);
         return { success: false, error: error.message };
       }
+    } else {
+      console.warn('Supabase client not available, skipping DB insert');
     }
 
     // Update local cache immediately (realtime will also sync it)
     participants.push({
-      eventId: Number(eventId),
+      eventId: normalizedEventId,
       userEmail: participant.userEmail,
       player: participant.player,
       joinedAt: new Date().toISOString()
     });
-    console.log('Registered participant locally:', participant.player, 'for event', eventId);
+    console.log('Registered participant locally:', participant.player, 'for event', normalizedEventId);
     setLocal('eventParticipants', participants);
     return { success: true };
   }

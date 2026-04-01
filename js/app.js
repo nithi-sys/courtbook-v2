@@ -157,25 +157,47 @@ function renderEventsList() {
 }
 
 async function joinEvent(eventId) {
-  const ev = (Store.get('events') || []).find(e => String(e.id) === String(eventId));
-  if (!ev) return showAppAlert('error', 'Event not found.');
+  console.log('joinEvent called for ID:', eventId);
+  const events = Store.get('events') || [];
+  console.log('Available events in store:', events.length);
+  const ev = events.find(e => String(e.id) === String(eventId));
+  
+  if (!ev) {
+    console.error('Event not found for ID:', eventId);
+    return showAppAlert('error', 'Event not found.');
+  }
 
   const today = new Date().toISOString().split('T')[0];
-  if (ev.date < today) return showAppAlert('error', 'This event has already passed.');
+  console.log('Comparing event date:', ev.date, 'with today:', today);
+  if (ev.date < today) {
+    console.warn('Event has passed');
+    return showAppAlert('error', 'This event has already passed.');
+  }
 
   const auth = Auth.get();
   const user = auth?.user;
+  console.log('Current user session:', user ? user.email : 'None');
+  
   const userEmail = user?.email || (prompt('Enter your email to participate:') || '').trim();
   const playerName = user?.email ? (user.email.split('@')[0]) : (prompt('Enter your name:') || '').trim();
-  if (!userEmail || !playerName) return showAppAlert('error', 'Name and email are required to join.');
+  
+  if (!userEmail || !playerName) {
+    console.warn('Participate cancelled: missing user info');
+    return showAppAlert('error', 'Name and email are required to join.');
+  }
 
   showAppAlert('info', 'Registering participation...');
+  console.log('Attempting Store.addEventParticipant...');
   const res = await Store.addEventParticipant(eventId, { userEmail, player: playerName });
-  if (!res.success) return showAppAlert('error', res.error || 'Could not join event.');
+  console.log('Store.addEventParticipant result:', res);
+
+  if (!res.success) {
+    console.error('Join failed:', res.error);
+    return showAppAlert('error', res.error || 'Could not join event.');
+  }
 
   showAppAlert('success', `✅ You are now participating in "${ev.name}". The admin has been notified.`);
   renderEventsList();
-  // The Store.setLocal in addEventParticipant already triggers a proper storage event.
 }
 
 function isCurrentlyBusy(courtId, bookings) {
