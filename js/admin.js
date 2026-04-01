@@ -523,25 +523,19 @@ function renderEvents() {
 
     var participantHtml = eventParticipants.length
       ? eventParticipants.map(function (p) {
-        return '<span class="badge badge-neutral" style="margin:2px 2px;font-size:0.7rem" title="' + p.userEmail + '">' + p.player + '</span>';
+        return '<div style="margin-top:4px;font-size:0.75rem;color:var(--muted)"><span class="badge badge-neutral" style="font-size:0.65rem;padding:2px 4px;margin-right:4px">Participant</span>' + p.player + '</div>';
       }).join('')
-      : '<span style="color:var(--muted);font-size:0.78rem">None yet</span>';
+      : '';
 
     return '<tr>' +
-      '<td><strong>' + e.name + '</strong></td>' +
+      '<td><strong>' + e.name + '</strong>' + participantHtml + '</td>' +
       '<td>' + courtNames + '</td>' +
       '<td class="td-mono">' + e.date + '</td>' +
       '<td class="td-mono">' + e.start + '–' + e.end + '</td>' +
       '<td><span class="badge badge-accent">' + e.type + '</span></td>' +
-      '<td>' +
-        '<div style="display:flex;flex-wrap:wrap;gap:2px;align-items:center">' +
-          participantHtml +
-          (eventParticipants.length ? '<span style="font-size:0.7rem;color:var(--muted);margin-left:4px">(' + eventParticipants.length + ')</span>' : '') +
-        '</div>' +
-      '</td>' +
       '<td><button class="btn btn-sm btn-danger" onclick="deleteEvent(' + i + ')">Remove</button></td>' +
       '</tr>';
-  }).join('') || '<tr><td colspan="7"><div class="empty-state">No events scheduled.</div></td></tr>';
+  }).join('') || '<tr><td colspan="6"><div class="empty-state">No events scheduled.</div></td></tr>';
 
   var wrap = document.getElementById('eventCourtPicker');
   if (wrap) {
