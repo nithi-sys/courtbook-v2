@@ -261,35 +261,42 @@ async function joinEvent(eventId) {
   var ident = getIdentityForEventParticipation();
   if (!ident.userEmail || !ident.playerName) return;
 
-  // Change UI immediately for instant feedback
+  var alreadyJoined = isUserJoinedEvent(eventId, ident.userEmail);
   btn.disabled = true;
-  const originalText = btn.innerText;
-  const originalClass = btn.className;
-  btn.innerText = 'Joined';
-  btn.classList.remove('btn-primary');
-  btn.classList.add('btn-success');
+
+  // Optimistic UI toggle for instant feedback
+  if (alreadyJoined) {
+    btn.innerText = 'Participate';
+    btn.classList.replace('btn-success', 'btn-primary');
+  } else {
+    btn.innerText = 'Joined';
+    btn.classList.replace('btn-primary', 'btn-success');
+  }
 
   try {
-    var resIn = await Store.addEventParticipant(eventId, {
-      userEmail: ident.userEmail,
-      player: ident.playerName,
-      sourceEvent: ev
-    });
-
-    if (resIn.success) {
-      showAppAlert('success', resIn.message === 'Already joined.' ? 'You have already joined!' : 'Joined Successfully!');
+    if (alreadyJoined) {
+      var resOut = await Store.removeEventParticipant(eventId, ident.userEmail);
+      if (resOut.success) {
+        showAppAlert('info', 'Participation Revoked');
+      } else {
+        showAppAlert('error', resOut.error || 'Failed to revoke participation.');
+      }
     } else {
-      // Revert if failed
-      btn.disabled = false;
-      btn.innerText = originalText;
-      btn.className = originalClass;
-      showAppAlert('error', resIn.error || 'Failed to join event.');
+      var resIn = await Store.addEventParticipant(eventId, {
+        userEmail: ident.userEmail,
+        player: ident.playerName,
+        sourceEvent: ev
+      });
+
+      if (resIn.success) {
+        showAppAlert('success', resIn.message === 'Already joined.' ? 'You have already joined!' : 'Joined Successfully!');
+      } else {
+        showAppAlert('error', resIn.error || 'Failed to join event.');
+      }
     }
   } catch (err) {
-    btn.disabled = false;
-    btn.innerText = originalText;
-    btn.className = originalClass;
-    showAppAlert('error', 'An error occurred.');
+    console.error('joinEvent error:', err);
+    showAppAlert('error', 'An error occurred during participation sync.');
   } finally {
     renderEventsList();
   }
