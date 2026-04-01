@@ -19,6 +19,40 @@ function adminAlert(msg, type) {
   adminAlert._t = setTimeout(function () { el.classList.remove('show'); }, 3200);
 }
 
+function setSchemaWarning(message) {
+  var el = document.getElementById('schemaWarning');
+  if (!el) return;
+  if (!message) {
+    el.style.display = 'none';
+    el.textContent = '';
+    return;
+  }
+  el.textContent = message;
+  el.style.display = 'block';
+}
+
+async function checkSchemaHealth() {
+  if (!window.supabaseClient) return;
+  try {
+    var issues = [];
+    const { error: evErr } = await supabaseClient.from('events').select('id').limit(1);
+    if (evErr && evErr.code === 'PGRST205') issues.push('events');
+    const { error: epErr } = await supabaseClient.from('event_participants').select('id').limit(1);
+    if (epErr && epErr.code === 'PGRST205') issues.push('event_participants');
+
+    if (issues.length) {
+      setSchemaWarning(
+        'Supabase schema cache issue: missing table(s) [' + issues.join(', ') + ']. ' +
+        "Run SQL: NOTIFY pgrst, 'reload schema';"
+      );
+    } else {
+      setSchemaWarning('');
+    }
+  } catch (err) {
+    console.warn('Schema health check failed:', err);
+  }
+}
+
 function v(id) {
   var el = document.getElementById(id);
   return el ? el.value : '';
@@ -975,6 +1009,7 @@ var renders = {
 /* ======== INIT ======== */
 (async function initAdmin() {
   await Store.init();
+  await checkSchemaHealth();
   showModule('userportal');
 })();
 
