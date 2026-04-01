@@ -501,10 +501,24 @@ function renderEvents() {
     }).join(', ') || '—';
 
     const eventParticipants = allParticipants.filter(function (p) {
-      // Use both possible ID fields and ensure string comparison for reliability
+      // 1. Direct ID match (most reliable)
       const pId = String(p.eventId || p.event_id || '').toLowerCase().trim();
       const eId = String(e.id || '').toLowerCase().trim();
-      return pId === eId;
+      if (pId === eId) return true;
+
+      // 2. Fuzzy match for Fallback (ev_...) vs Formal IDs (numeric)
+      // This happens if one tab sees the "formal" DB event and another sees the "reconstructed" booking
+      const isRecon = eId.startsWith('ev_');
+      const pIdIsNumeric = !isNaN(Number(pId)) && pId !== '';
+      
+      if (isRecon || pIdIsNumeric) {
+        // If names and dates match exactly, we treat them as the same event
+        const pEvent = (Store.get('events') || []).find(ev => String(ev.id) === pId);
+        if (pEvent) {
+          return pEvent.name === e.name && pEvent.date === e.date;
+        }
+      }
+      return false;
     });
 
     var participantHtml = eventParticipants.length

@@ -134,7 +134,16 @@ function renderEventsList() {
     const eventParticipants = participants.filter(p => {
       const pId = String(p.eventId || p.event_id || '').toLowerCase().trim();
       const eId = String(e.id || '').toLowerCase().trim();
-      return pId === eId;
+      if (pId === eId) return true;
+      const isRecon = eId.startsWith('ev_');
+      const pIdIsNumeric = !isNaN(Number(pId)) && pId !== '';
+      if (isRecon || pIdIsNumeric) {
+        const pEvent = events.find(ev => String(ev.id).toLowerCase().trim() === pId);
+        if (pEvent) {
+          return pEvent.name === e.name && pEvent.date === e.date;
+        }
+      }
+      return false;
     });
     const courtNames = (Store.get('courts') || []).filter(c => (e.courtIds || []).some(cid => Number(cid) === Number(c.id))).map(c => c.name).join(', ');
     const canJoin = e.date >= today;

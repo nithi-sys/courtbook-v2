@@ -853,6 +853,9 @@ const Store = (() => {
       if (k === 'events') cache.events = val;
       else if (k === 'eventParticipants') cache.eventParticipants = val;
       else if (k === 'notifications') cache.notifications = val;
+      else if (k === 'bookings') cache.bookings = val;
+      else if (k === 'courts') cache.courts = val;
+      else if (k === 'settings') cache.settings = val;
     } catch (err) {}
   });
 
