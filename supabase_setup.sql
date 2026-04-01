@@ -296,7 +296,7 @@ create policy "Everyone can view event participants"
 drop policy if exists "Authenticated users can join events" on public.event_participants;
 create policy "Authenticated users can join events"
   on public.event_participants for insert
-  with check (auth.uid() is not null);
+  with check (true);
 
 -- Realtime
 do $$

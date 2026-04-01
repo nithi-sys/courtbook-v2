@@ -283,7 +283,15 @@ const Store = (() => {
           }
         }
         if (payload.eventType === 'DELETE') cache.eventParticipants = cache.eventParticipants.filter(x => x.id !== payload.old.id);
-        const ev = new Event('storage', { bubbles: true }); ev.key = 'cb_eventParticipants'; window.dispatchEvent(ev);
+        localStorage.setItem('cb_eventParticipants', JSON.stringify(cache.eventParticipants));
+        const storageEvent = new StorageEvent('storage', {
+          key: 'cb_eventParticipants',
+          oldValue: null,
+          newValue: JSON.stringify(cache.eventParticipants),
+          url: window.location.href,
+          storageArea: localStorage
+        });
+        window.dispatchEvent(storageEvent);
       })
       .subscribe();
 
