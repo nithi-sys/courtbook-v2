@@ -664,15 +664,18 @@ function renderEvents(skipCourtPicker) {
       return false;
     });
 
+    const pList = eventParticipants.map(function (p) { return p.player; }).join(', ') || '<span style="color:var(--muted)">None yet</span>';
+
     return '<tr>' +
       '<td><strong>' + e.name + '</strong></td>' +
       '<td>' + courtNames + '</td>' +
       '<td class="td-mono">' + e.date + '</td>' +
       '<td class="td-mono">' + e.start + '–' + e.end + '</td>' +
       '<td><span class="badge badge-accent">' + e.type + '</span></td>' +
+      '<td style="font-size:0.75rem;max-width:200px;overflow:hidden;text-overflow:ellipsis" title="' + adminEscapeHtml(pList.replace(/<[^>]+>/g, '')) + '">' + pList + '</td>' +
       '<td><button class="btn btn-sm btn-danger" onclick="deleteEvent(' + i + ')">Remove</button></td>' +
       '</tr>';
-  }).join('') || '<tr><td colspan="6"><div class="empty-state">No events scheduled.</div></td></tr>';
+  }).join('') || '<tr><td colspan="7"><div class="empty-state">No events scheduled.</div></td></tr>';
 
   var participantsBody = document.getElementById('eventParticipantsBody');
   var countEl = document.getElementById('eventParticipantsCount');
