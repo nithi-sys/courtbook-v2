@@ -14,6 +14,80 @@ function scheduleRenderEventsList() {
   }, 450);
 }
 
+function eventKeyFromEvent(e) {
+  return [
+    String(e.name || '').trim().toLowerCase(),
+    String(e.date || '').trim(),
+    String(e.start || '').trim(),
+    String(e.end || '').trim(),
+    String(e.type || '').trim().toLowerCase()
+  ].join('|');
+}
+
+function participantBelongsToEvent(p, e, allEvents) {
+  if (!Store.isJoinedParticipant(p)) return false;
+  const eKey = eventKeyFromEvent(e);
+  const pRef = String(p.eventRef || '').toLowerCase().trim();
+  const eId = String(e.id || '').toLowerCase().trim();
+  if (pRef && pRef === eId) return true;
+  const pKey = String(p.eventKey || '').trim();
+  if (pKey && pKey === eKey) return true;
+  const pId = String(p.eventId || p.event_id || '').toLowerCase().trim();
+  if (pId === eId) return true;
+  const isRecon = eId.startsWith('ev_');
+  const pIdIsNumeric = !isNaN(Number(pId)) && pId !== '';
+  if (isRecon || pIdIsNumeric) {
+    const pEvent = allEvents.find(ev => String(ev.id).toLowerCase().trim() === pId);
+    if (pEvent) {
+      return pEvent.name === e.name && pEvent.date === e.date;
+    }
+  }
+  return false;
+}
+
+function getIdentityForEventParticipation() {
+  const session = Auth.get();
+  if (session && session.user && session.user.email) {
+    const email = String(session.user.email).trim();
+    const meta = session.user.user_metadata || {};
+    const playerName = String(meta.full_name || meta.name || email.split('@')[0] || 'Player').trim();
+    return { userEmail: email, playerName: playerName };
+  }
+  var userEmail = (localStorage.getItem('cb_guest_email') || '').trim();
+  var playerName = (localStorage.getItem('cb_guest_name') || '').trim();
+  if (!userEmail || !playerName) {
+    userEmail = (prompt('Enter your email for registration tracking:') || '').trim();
+    playerName = (prompt('Enter your name:') || '').trim();
+    if (userEmail && playerName) {
+      localStorage.setItem('cb_guest_email', userEmail);
+      localStorage.setItem('cb_guest_name', playerName);
+    }
+  }
+  return { userEmail: userEmail, playerName: playerName };
+}
+
+function isUserJoinedEvent(eventId, userEmail) {
+  var email = String(userEmail || '').toLowerCase().trim();
+  if (!email) return false;
+  var events = Store.get('events') || [];
+  var ev = events.find(function (e) { return String(e.id) === String(eventId); });
+  if (!ev) return false;
+  var participants = Store.get('eventParticipants') || [];
+  return participants.some(function (p) {
+    if (!participantBelongsToEvent(p, ev, events)) return false;
+    var pEmail = String(p.userEmail || p.user_email || '').toLowerCase().trim();
+    return pEmail === email;
+  });
+}
+
+function setJoinButtonVisual(btn, isJoined) {
+  if (!btn) return;
+  btn.classList.toggle('btn-success', !!isJoined);
+  btn.classList.toggle('btn-primary', !isJoined);
+  btn.textContent = isJoined ? 'Joined' : 'Participate';
+  btn.title = isJoined ? 'Click to leave this event' : 'Register for this event';
+}
+
 document.getElementById('headerDate').textContent = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 document.getElementById('bookDate').value = todayStr;
 document.getElementById('bookDate').min = todayStr;
@@ -141,32 +215,7 @@ function renderEventsList() {
   document.getElementById('eventCount').textContent = `${events.length} events`;
 
   const html = events.length ? events.map(e => {
-    const eKey = [
-      String(e.name || '').trim().toLowerCase(),
-      String(e.date || '').trim(),
-      String(e.start || '').trim(),
-      String(e.end || '').trim(),
-      String(e.type || '').trim().toLowerCase()
-    ].join('|');
-    const eventParticipants = participants.filter(p => {
-      if (!Store.isJoinedParticipant(p)) return false;
-      const pRef = String(p.eventRef || '').toLowerCase().trim();
-      const eId = String(e.id || '').toLowerCase().trim();
-      if (pRef && pRef === eId) return true;
-      const pKey = String(p.eventKey || '').trim();
-      if (pKey && pKey === eKey) return true;
-      const pId = String(p.eventId || p.event_id || '').toLowerCase().trim();
-      if (pId === eId) return true;
-      const isRecon = eId.startsWith('ev_');
-      const pIdIsNumeric = !isNaN(Number(pId)) && pId !== '';
-      if (isRecon || pIdIsNumeric) {
-        const pEvent = events.find(ev => String(ev.id).toLowerCase().trim() === pId);
-        if (pEvent) {
-          return pEvent.name === e.name && pEvent.date === e.date;
-        }
-      }
-      return false;
-    });
+    const eventParticipants = participants.filter(p => participantBelongsToEvent(p, e, events));
     const courtNames = (Store.get('courts') || []).filter(c => (e.courtIds || []).some(cid => Number(cid) === Number(c.id))).map(c => c.name).join(', ');
     const canJoin = e.date >= today;
 
@@ -181,7 +230,7 @@ function renderEventsList() {
       return currentEmail && pEmail === currentEmail.toLowerCase().trim();
     });
     const joinedCount = eventParticipants.length;
-    const btnText = !canJoin ? 'Event Passed' : (isJoined ? 'Joined' : 'Participation');
+    const btnText = !canJoin ? 'Event Passed' : (isJoined ? 'Joined' : 'Participate');
     const btnClass = isJoined ? 'btn-success' : 'btn-primary';
     const joinAttr = encodeURIComponent(String(e.id));
     const btnTitle = !canJoin ? '' : (isJoined ? 'Click to leave this event' : 'Register for this event');
@@ -205,54 +254,43 @@ function renderEventsList() {
 }
 
 async function joinEvent(eventId) {
-  let btn = null;
+  var btn = null;
   document.querySelectorAll('button.btn-join-event[data-join-event]').forEach(function (b) {
     try { if (decodeURIComponent(b.getAttribute('data-join-event') || '') === String(eventId)) btn = b; } catch (e) { }
   });
 
-  if (!btn) return;
+  if (!btn || btn.disabled) return;
 
-  const events = Store.get('events') || [];
-  const ev = events.find(e => String(e.id) === String(eventId));
+  var events = Store.get('events') || [];
+  var ev = events.find(function (e) { return String(e.id) === String(eventId); });
   if (!ev) return;
 
-  let userEmail = localStorage.getItem('cb_guest_email');
-  let playerName = localStorage.getItem('cb_guest_name');
+  var ident = getIdentityForEventParticipation();
+  if (!ident.userEmail || !ident.playerName) return;
 
-  if (!userEmail) {
-    userEmail = (prompt('Enter your email for registration tracking:') || '').trim();
-    playerName = (prompt('Enter your name:') || '').trim();
-    if (userEmail && playerName) {
-      localStorage.setItem('cb_guest_email', userEmail);
-      localStorage.setItem('cb_guest_name', playerName);
-    }
-  }
-  if (!userEmail || !playerName) return;
+  var alreadyJoined = isUserJoinedEvent(eventId, ident.userEmail);
+  // Instant label toggle; renderEventsList() reconciles after async work
+  setJoinButtonVisual(btn, !alreadyJoined);
 
-  const isJoined = btn.classList.contains('btn-success');
-  
-  if (isJoined) {
-    // REVOKE participation (DB Sync)
-    const res = await Store.removeEventParticipant(eventId, userEmail);
-    if (!res.success && res.error) {
-      console.warn('DB Revoke Error:', res.error);
+  if (alreadyJoined) {
+    var resOut = await Store.removeEventParticipant(eventId, ident.userEmail);
+    if (!resOut.success && resOut.error) {
+      console.warn('DB Revoke Error:', resOut.error);
     }
     showAppAlert('info', 'Participation Revoked');
   } else {
-    // JOIN event (DB Sync with Duplicate Prevention)
-    const res = await Store.addEventParticipant(eventId, {
-      userEmail: userEmail,
-      player: playerName
+    var resIn = await Store.addEventParticipant(eventId, {
+      userEmail: ident.userEmail,
+      player: ident.playerName
     });
-    
-    if (res.success) {
-      showAppAlert('success', res.message === 'Already joined.' ? 'You have already joined!' : 'Joined Successfully!');
+
+    if (resIn.success) {
+      showAppAlert('success', resIn.message === 'Already joined.' ? 'You have already joined!' : 'Joined Successfully!');
     } else {
-      showAppAlert('error', res.error || 'Failed to join event.');
+      showAppAlert('error', resIn.error || 'Failed to join event.');
     }
   }
-  
-  // Storage listener handles global re-render, but we do it manually for instant response
+
   renderEventsList();
 }
 
