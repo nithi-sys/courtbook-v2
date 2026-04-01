@@ -207,40 +207,59 @@ function renderEventsList() {
 async function joinEvent(eventId) {
   let btn = null;
   document.querySelectorAll('button.btn-join-event[data-join-event]').forEach(function (b) {
-    try {
-      if (decodeURIComponent(b.getAttribute('data-join-event') || '') === String(eventId)) btn = b;
-    } catch (e) { }
+    try { if (decodeURIComponent(b.getAttribute('data-join-event') || '') === String(eventId)) btn = b; } catch (e) { }
   });
 
   if (!btn) return;
 
-  const card = btn.closest('.event-card-user');
-  const badge = card ? card.querySelector('.event-joined-badge') : null;
-  const isJoined = btn.classList.contains('btn-success');
+  const events = Store.get('events') || [];
+  const ev = events.find(e => String(e.id) === String(eventId));
+  if (!ev) return;
 
-  if (isJoined) {
-    // Revert to Participation
-    btn.classList.remove('btn-success');
-    btn.classList.add('btn-primary');
-    btn.textContent = 'Participation';
-    btn.title = 'Register for this event';
-    
-    if (badge) {
-      let count = parseInt(badge.textContent) || 0;
-      badge.textContent = Math.max(0, count - 1) + ' joined';
-    }
-  } else {
-    // Change to Joined
-    btn.classList.remove('btn-primary');
-    btn.classList.add('btn-success');
-    btn.textContent = 'Joined';
-    btn.title = 'Click to leave this event';
-    
-    if (badge) {
-      let count = parseInt(badge.textContent) || 0;
-      badge.textContent = (count + 1) + ' joined';
+  let userEmail = localStorage.getItem('cb_guest_email');
+  let playerName = localStorage.getItem('cb_guest_name');
+
+  if (!userEmail) {
+    userEmail = (prompt('Enter your email for registration tracking:') || '').trim();
+    playerName = (prompt('Enter your name:') || '').trim();
+    if (userEmail && playerName) {
+      localStorage.setItem('cb_guest_email', userEmail);
+      localStorage.setItem('cb_guest_name', playerName);
     }
   }
+  if (!userEmail || !playerName) return;
+
+  let participants = [];
+  try { participants = JSON.parse(localStorage.getItem('cb_eventParticipants')) || []; } catch(e) {}
+
+  const isJoined = btn.classList.contains('btn-success');
+  
+  if (isJoined) {
+    // Remove from local storage
+    participants = participants.filter(p => String(p.eventId) !== String(eventId) || p.userEmail !== userEmail);
+    localStorage.setItem('cb_eventParticipants', JSON.stringify(participants));
+    showAppAlert('info', 'Participation Revoked');
+  } else {
+    // Add to local storage
+    const newParticipant = {
+      id: 'local_mock_' + Date.now(),
+      eventId: String(eventId),
+      userEmail: userEmail,
+      player: playerName,
+      joinedAt: new Date().toISOString(),
+      eventRef: ev.id,
+      eventName: ev.name,
+      eventDate: ev.date,
+      eventStart: ev.start,
+      eventEnd: ev.end
+    };
+    participants.push(newParticipant);
+    localStorage.setItem('cb_eventParticipants', JSON.stringify(participants));
+    showAppAlert('success', 'Joined Successfully!');
+  }
+  
+  // Refresh the UI to reflect new counts & button states globally
+  renderEventsList();
 }
 
 function isCurrentlyBusy(courtId, bookings) {
