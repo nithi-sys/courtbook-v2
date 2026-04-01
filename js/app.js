@@ -192,8 +192,9 @@ async function joinEvent(eventId) {
   console.log('Store.addEventParticipant result:', res);
 
   if (!res.success) {
-    console.error('Join failed:', res.error);
-    return showAppAlert('error', res.error || 'Could not join event.');
+    console.error('❌ Join failed:', res.error);
+    showAppAlert('error', `❌ Could not join: ${res.error || 'Unknown error'}`);
+    return;
   }
 
   showAppAlert('success', `✅ You are now participating in "${ev.name}". The admin has been notified.`);

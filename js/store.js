@@ -487,18 +487,27 @@ const Store = (() => {
 
     // Save to Supabase DB
     if (window.supabaseClient) {
-      console.log('Inserting into DB: event_participants table');
-      const { error } = await supabaseClient.from('event_participants').insert({
+      console.log('Inserting into DB: event_participants table with:', {
         event_id: normalizedEventId,
         user_email: participant.userEmail,
         player: participant.player
       });
+      const { data, error } = await supabaseClient.from('event_participants').insert({
+        event_id: normalizedEventId,
+        user_email: participant.userEmail,
+        player: participant.player
+      }).select();
+      
       if (error) {
-        console.error('DB Insert Error:', error);
-        return { success: false, error: error.message };
+        console.error('❌ DB Insert Error:', error);
+        console.error('Error Code:', error.code);
+        console.error('Error Message:', error.message);
+        console.error('Error Details:', error);
+        return { success: false, error: `DB Error: ${error.message}` };
       }
+      console.log('✅ DB Insert Success:', data);
     } else {
-      console.warn('Supabase client not available, skipping DB insert');
+      console.warn('⚠️ Supabase client not available, skipping DB insert');
     }
 
     // Update local cache immediately (realtime will also sync it)
@@ -508,8 +517,9 @@ const Store = (() => {
       player: participant.player,
       joinedAt: new Date().toISOString()
     });
-    console.log('Registered participant locally:', participant.player, 'for event', normalizedEventId);
+    console.log('✅ Registered participant locally:', participant.player, 'for event', normalizedEventId);
     setLocal('eventParticipants', participants);
+    console.log('✅ Storage event dispatched for eventParticipants');
     return { success: true };
   }
 
