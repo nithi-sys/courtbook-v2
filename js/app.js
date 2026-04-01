@@ -218,15 +218,24 @@ async function joinEvent(eventId) {
 
   showAppAlert('info', 'Registering participation...');
   try {
-    const participants = Store.get('eventParticipants') || [];
-    const isJoined = participants.some(p => {
-      const pEId = String(p.eventId || p.event_id || '').toLowerCase().trim();
-      const pEmail = String(p.userEmail || p.user_email || '').toLowerCase().trim();
-      return pEId === String(eventId).toLowerCase().trim() && pEmail === userEmail.toLowerCase().trim();
-    });
+    const auth = Auth.get();
+    let userEmail = auth?.user?.email;
+    let playerName = userEmail ? userEmail.split('@')[0] : '';
 
-    let res;
-    if (isJoined) {
+    // 1. Check if user is already joined (to determine if we are revoking)
+    // We check against all known participants and the current user's email (if logged in)
+    const participants = Store.get('eventParticipants') || [];
+    let existingEntry = null;
+    
+    if (userEmail) {
+      existingEntry = participants.find(p => {
+        const pEId = String(p.eventId || p.event_id || '').toLowerCase().trim();
+        const pEmail = String(p.userEmail || p.user_email || '').toLowerCase().trim();
+        return pEId === String(eventId).toLowerCase().trim() && pEmail === userEmail.toLowerCase().trim();
+      });
+    }
+
+    if (existingEntry) {
       if (!confirm('Are you sure you want to revoke your participation?')) {
         btn.textContent = 'Joined (Click to Revoke)';
         btn.disabled = false;
@@ -234,19 +243,49 @@ async function joinEvent(eventId) {
       }
       res = await Store.removeEventParticipant(eventId, userEmail);
     } else {
-      res = await Store.addEventParticipant(eventId, { userEmail, player: playerName });
+      // 2. If not logged in, we MUST prompt for info before we can either join OR revoke (if they joined as guest)
+      if (!userEmail) {
+        const info = await promptParticipantInfo();
+        if (!info) {
+          btn.disabled = false;
+          btn.textContent = 'Participate';
+          return;
+        }
+        userEmail = info.userEmail;
+        playerName = info.player;
+
+        // Re-check if they are joined with this specific email they just entered
+        existingEntry = participants.find(p => {
+          const pEId = String(p.eventId || p.event_id || '').toLowerCase().trim();
+          const pEmail = String(p.userEmail || p.user_email || '').toLowerCase().trim();
+          return pEId === String(eventId).toLowerCase().trim() && pEmail === userEmail.toLowerCase().trim();
+        });
+
+        if (existingEntry) {
+          if (!confirm('You are already joined with this email. Do you want to revoke your participation?')) {
+            btn.disabled = false;
+            btn.textContent = 'Joined (Click to Revoke)';
+            return;
+          }
+          res = await Store.removeEventParticipant(eventId, userEmail);
+        } else {
+          res = await Store.addEventParticipant(eventId, { userEmail, player: playerName });
+        }
+      } else {
+        // Logged in but not joined yet
+        res = await Store.addEventParticipant(eventId, { userEmail, player: playerName });
+      }
     }
 
     console.log('Store participation action result:', res);
     if (!res.success) {
       console.error('❌ Action failed:', res.error);
       showAppAlert('error', `❌ ${res.error || 'Request failed.'}`);
-      btn.textContent = isJoined ? 'Joined (Click to Revoke)' : 'Participate';
-      btn.disabled = false;
+      renderEventsList(); // Refresh to restore button state
       return;
     }
 
-    showAppAlert('info', isJoined ? 'Participation Revoked' : 'Joined Successfully!');
+    showAppAlert('success', existingEntry ? 'Participation Revoked' : 'Joined Successfully!');
     renderEventsList();
   } catch (err) {
     console.error('❌ joinEvent error:', err);
