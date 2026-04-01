@@ -571,7 +571,8 @@ async function confirmBooking() {
     players: selection.players,
     cost: cost.total,
     status: 'confirmed',
-    equipment: selection.equipment
+    equipment: selection.equipment,
+    is_event: false
   };
 
   // 3. Save to Supabase
@@ -583,13 +584,16 @@ async function confirmBooking() {
     return;
   }
 
-  // 4. Update Promo usage (local proxy updates DB)
+  // 4. Sync local cache + notify admin/other tabs (same idea as event_participants after Participate)
+  Store.applyBookingInsert(newBooking);
+
+  // 5. Update Promo usage (local proxy updates DB)
   if (selection.promoCode) await Store.applyPromo(selection.promoCode);
 
-  // 5. Release Lock
+  // 6. Release Lock
   if (features.concurrencyLock) Store.releaseLock(selection.courtId, selection.date, selection.start, selection.end);
 
-  // 6. Notify System (Local cache for now)
+  // 7. Notify System (Local cache for now)
   const peakText = cost.peakMultiplier > 1 ? ` (${cost.peakMultiplier}x Peak)` : '';
   Store.addNotification(`Booking confirmed: ${player} booked ${court.name} on ${selection.date} ${selection.start}–${selection.end}. Total: Rs.${cost.total}${peakText}.`, 'success');
 

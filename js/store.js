@@ -241,7 +241,7 @@ const Store = (() => {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, payload => {
         const mappedBooking = payload.new ? { ...payload.new, courtId: payload.new.court_id, courtName: payload.new.court_name, start: payload.new.start_time, end: payload.new.end_time, isEvent: payload.new.is_event } : null;
-        if (payload.eventType === 'INSERT' && !cache.bookings.some(b => b.id === mappedBooking.id)) {
+        if (payload.eventType === 'INSERT' && !cache.bookings.some(b => String(b.id) === String(mappedBooking.id))) {
           cache.bookings.push(mappedBooking);
           if (!mappedBooking.isEvent && Auth.isAdmin()) {
             const msg = `New Booking: ${mappedBooking.player} booked ${mappedBooking.courtName} for ${mappedBooking.date} at ${mappedBooking.start}`;
@@ -511,6 +511,24 @@ const Store = (() => {
       cache.settings[col] = val; // optimistic updates
       await supabaseClient.from('app_settings').update({ [col]: val }).eq('id', 1);
     }
+  }
+
+  /** Merge a booking row into cache + localStorage (same pattern as event participant sync after DB insert). */
+  function applyBookingInsert(row) {
+    if (!row || row.id == null) return;
+    const mapped = {
+      ...row,
+      courtId: row.court_id,
+      courtName: row.court_name,
+      start: row.start_time,
+      end: row.end_time,
+      isEvent: !!row.is_event
+    };
+    const next = [...cache.bookings];
+    const idx = next.findIndex(b => String(b.id) === String(mapped.id));
+    if (idx === -1) next.push(mapped);
+    else next[idx] = { ...next[idx], ...mapped };
+    setLocal('bookings', next);
   }
 
   // Local/Transient Setters (for waitlist, notifications, etc)
@@ -846,6 +864,8 @@ const Store = (() => {
       return null;
     }
 
+    applyBookingInsert(newBooking);
+
     // Remove from waitlist
     await supabaseClient.from('waitlist').delete().eq('id', top.id);
 
@@ -1089,7 +1109,7 @@ const Store = (() => {
   }
 
   return {
-    init, get, updateSetting, setLocal,
+    init, get, updateSetting, setLocal, applyBookingInsert,
     calcCost, checkConflict, getSlotPlayerCount,
     getPendingLock, acquireLock, releaseLock,
     applyPromo, addNotification,
