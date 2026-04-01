@@ -158,7 +158,7 @@ function renderEventsList() {
       const pEmail = String(p.userEmail || p.user_email || '').toLowerCase().trim();
       return currentEmail && pEmail === currentEmail.toLowerCase().trim();
     });
-    const btnText = !canJoin ? 'Event Passed' : (isJoined ? '✓ Already Joined (Participating)' : 'Participate');
+    const btnText = !canJoin ? 'Event Passed' : (isJoined ? 'Joined' : 'Participation');
     const btnClass = isJoined ? 'btn-success' : 'btn-primary';
 
     return `<div class="card card-pad card-accent-top court-card" style="border-left:4px solid #6366f1;">
