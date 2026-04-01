@@ -655,8 +655,49 @@ const Store = (() => {
       return { success: false, error: 'Already participating in this event.' };
     }
 
-    // 3. Save to Supabase DB (only if ID is numeric, as DB bigint column requires it)
-    if (window.supabaseClient && !isNaN(Number(normalizedEventId))) {
+    // 3. Ensure we have a numeric event id for the DB. If not, try to resolve from DB or create event record when possible.
+    if (window.supabaseClient && isNaN(Number(normalizedEventId)) && sourceEvent) {
+      try {
+        const { data: resolveMatches, error: resolveErr } = await supabaseClient
+          .from('events')
+          .select('id,name,date,start_time,end_time,type,courts')
+          .eq('name', sourceEvent.name)
+          .eq('date', sourceEvent.date)
+          .eq('type', sourceEvent.type);
+
+        if (!resolveErr && resolveMatches && resolveMatches.length) {
+          const exactMatch = resolveMatches.find(d =>
+            String((d.start_time || '').slice(0, 5)) === String(sourceEvent.start || '') &&
+            String((d.end_time || '').slice(0, 5)) === String(sourceEvent.end || '')
+          );
+          const picked = exactMatch || resolveMatches[0];
+          if (picked && !isNaN(Number(picked.id))) {
+            normalizedEventId = Number(picked.id);
+            console.log('Resolved event ID from DB for participant insert:', normalizedEventId);
+          }
+        }
+
+        if (isNaN(Number(normalizedEventId))) {
+          const { data: insertedEvent, error: insertErr } = await supabaseClient
+            .from('events')
+            .insert([{ name: sourceEvent.name, date: sourceEvent.date, start_time: sourceEvent.start, end_time: sourceEvent.end, type: sourceEvent.type, courts: sourceEvent.courtIds || [] }])
+            .select()
+            .single();
+
+          if (!insertErr && insertedEvent && !isNaN(Number(insertedEvent.id))) {
+            normalizedEventId = Number(insertedEvent.id);
+            console.log('Created DB event for participant link:', normalizedEventId);
+          } else if (insertErr) {
+            console.warn('Could not create DB event in fallback path:', insertErr.message || insertErr);
+          }
+        }
+      } catch (resolveErr) {
+        console.warn('Could not resolve or create event ID for event participant:', resolveErr);
+      }
+    }
+
+    const dbInsertAllowed = window.supabaseClient && !isNaN(Number(normalizedEventId));
+    if (dbInsertAllowed) {
       console.log('Inserting into DB: event_participants table with:', {
         event_id: normalizedEventId,
         user_email: participant.userEmail,
@@ -664,23 +705,22 @@ const Store = (() => {
       });
       const auth = Auth.get();
       const userId = auth?.user?.id;
-      
+
       const { data, error } = await supabaseClient.from('event_participants').insert({
         event_id: Number(normalizedEventId),
         user_id: userId,
         user_email: participant.userEmail,
         player: participant.player
       }).select();
-      
+
       if (error) {
         console.error('❌ DB Insert Error:', error);
-        // If it's a table not found error, we still proceed locally to let the user see their change
         if (error.code !== 'PGRST205' && error.code !== '404') {
           return { success: false, error: `DB Error: ${error.message}` };
         }
       }
+
       if (data && data[0]) {
-        // Use the real DB data for the cache record
         const p = data[0];
         participants.push({
           id: p.id,
@@ -693,7 +733,6 @@ const Store = (() => {
           ...eventMeta
         });
       } else {
-        // Fallback to local record if we didn't get data back but no hard error occurred
         participants.push({
           eventId: normalizedEventId,
           eventRef: eventRef,
@@ -706,7 +745,6 @@ const Store = (() => {
       }
     } else {
       console.warn('⚠️ Supabase insert skipped (client missing or non-numeric ID)');
-      // Local-only/Fallback record
       participants.push({
         eventId: normalizedEventId,
         eventRef: eventRef,
