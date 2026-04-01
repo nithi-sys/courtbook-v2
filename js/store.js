@@ -311,15 +311,9 @@ const Store = (() => {
           localStorage.setItem('cb_eventParticipants', JSON.stringify(filtered));
         }
         
-        // Dispatch event with normalized key for consistency
-        const storageEvent = new StorageEvent('storage', {
-          key: 'cb_eventParticipants',
-          oldValue: null,
-          newValue: localStorage.getItem('cb_eventParticipants'),
-          url: window.location.href,
-          storageArea: localStorage
-        });
-        window.dispatchEvent(storageEvent);
+        const ev = new Event('storage', { bubbles: true });
+        ev.key = 'cb_eventParticipants';
+        window.dispatchEvent(ev);
       })
       .subscribe();
 
