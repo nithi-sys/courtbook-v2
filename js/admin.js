@@ -664,9 +664,8 @@ function renderEvents(skipCourtPicker) {
       return false;
     });
 
-    var pListPlain = eventParticipants.map(function (p) { return p.player || '—'; }).join(', ');
     var pListHtml = eventParticipants.length
-      ? eventParticipants.map(function (p) { return adminEscapeHtml(p.player || '—'); }).join(', ')
+      ? '<span style="font-weight:600;color:var(--accent);cursor:pointer;text-decoration:underline" onclick="openParticipantModal(' + i + ')">' + eventParticipants.length + ' Joined</span>'
       : '<span style="color:var(--muted)">None yet</span>';
 
     return '<tr>' +
@@ -675,7 +674,7 @@ function renderEvents(skipCourtPicker) {
       '<td class="td-mono">' + e.date + '</td>' +
       '<td class="td-mono">' + e.start + '–' + e.end + '</td>' +
       '<td><span class="badge badge-accent">' + e.type + '</span></td>' +
-      '<td style="font-size:0.75rem;max-width:320px;overflow:hidden;text-overflow:ellipsis" title="' + adminEscapeHtml(pListPlain) + '">' + pListHtml + '</td>' +
+      '<td>' + pListHtml + '</td>' +
       '<td><button class="btn btn-sm btn-danger" onclick="deleteEvent(' + i + ')">Remove</button></td>' +
       '</tr>';
   }).join('') || '<tr><td colspan="7"><div class="empty-state">No events scheduled.</div></td></tr>';
@@ -683,7 +682,7 @@ function renderEvents(skipCourtPicker) {
   var wrap = document.getElementById('eventCourtPicker');
   if (wrap && !skipCourtPicker) {
     var checkedIds = Array.from(wrap.querySelectorAll('input:checked')).map(function(el) { return String(el.value); });
-    var activeCourts = courts.filter(function (c) { return c.active; });
+    var activeCourts = (Store.get('courts') || []).filter(function (c) { return c.active; });
     wrap.innerHTML = activeCourts.map(function (c) {
       var isChecked = checkedIds.indexOf(String(c.id)) > -1 ? 'checked' : '';
       var cid = String(c.id).replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -695,6 +694,57 @@ function renderEvents(skipCourtPicker) {
     }).join('') || '<div style="font-size:0.82rem;color:var(--muted)">No active courts. Open <strong>Configuration → Courts</strong> and activate at least one court.</div>';
   }
 }
+
+/* ======== PARTICIPANT MODAL LOGIC ======== */
+window.openParticipantModal = function(idx) {
+  const events = Store.get('events') || [];
+  const e = events[idx];
+  if (!e) return;
+
+  const allParticipants = getParticipantsForAdminView();
+  const eventParticipants = allParticipants.filter(function(p) {
+    const pRef = String(p.eventRef || '').toLowerCase().trim();
+    const eId = String(e.id || '').toLowerCase().trim();
+    if (pRef && pRef === eId) return true;
+    const pKey = String(p.eventKey || '').trim();
+    const eKey = [String(e.name || '').trim().toLowerCase(), String(e.date || '').trim(), String(e.start || '').trim(), String(e.end || '').trim(), String(e.type || '').trim().toLowerCase()].join('|');
+    if (pKey && pKey === eKey) return true;
+    const pId = String(p.eventId || p.event_id || '').toLowerCase().trim();
+    return pId === eId;
+  });
+
+  document.getElementById('modalEventName').textContent = e.name;
+  document.getElementById('modalEventMeta').textContent = e.date + ' · ' + e.start + '–' + e.end + ' (' + e.type + ')';
+  
+  const body = document.getElementById('modalParticipantsBody');
+  body.innerHTML = eventParticipants.map(function(p) {
+    const email = p.userEmail || p.user_email || '—';
+    const joined = p.joinedAt || p.joined_at ? new Date(p.joinedAt || p.joined_at).toLocaleString() : '—';
+    return '<tr>' +
+      '<td><strong>' + adminEscapeHtml(p.player || '—') + '</strong></td>' +
+      '<td>' + adminEscapeHtml(email) + '</td>' +
+      '<td class="td-mono">' + adminEscapeHtml(joined) + '</td>' +
+      '<td><button class="btn btn-sm btn-danger" onclick="adminRemoveFromModal(\'' + String(p.eventId || p.event_id || '') + '\', \'' + email + '\')">Remove</button></td>' +
+      '</tr>';
+  }).join('') || '<tr><td colspan="4"><div class="empty-state">No participants joined yet.</div></td></tr>';
+
+  document.getElementById('participantModal').style.display = 'flex';
+};
+
+window.closeParticipantModal = function() {
+  document.getElementById('participantModal').style.display = 'none';
+};
+
+window.adminRemoveFromModal = async function(eventId, userEmail) {
+  if (!confirm('Remove this participant from the event?')) return;
+  const res = await Store.removeEventParticipant(eventId, userEmail);
+  if (!res.success) return adminAlert(res.error || 'Could not remove.', 'error');
+  adminAlert('Participant removed.');
+  
+  // Close modal and refresh the main events table
+  closeParticipantModal();
+  renderEvents(true);
+};
 
 async function addEvent() {
   function normalizeDate(val) {

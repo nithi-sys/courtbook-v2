@@ -602,6 +602,34 @@
             </table>
           </div>
         </div>
+
+        <!-- Participants Detail Modal (choose any method) -->
+        <div id="participantModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;align-items:center;justify-content:center;padding:1rem;">
+          <div class="card card-pad" style="width:100%;max-width:600px;max-height:80vh;overflow-y:auto;box-shadow:var(--shadow-lg)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;border-bottom:1px solid var(--border);padding-bottom:0.75rem">
+              <div>
+                <h3 id="modalEventName" style="margin:0">Event Participants</h3>
+                <div id="modalEventMeta" style="font-size:0.75rem;color:var(--muted);margin-top:2px"></div>
+              </div>
+              <button class="btn btn-sm btn-secondary" onclick="closeParticipantModal()">Close</button>
+            </div>
+            <div class="table-card">
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Player</th>
+                      <th>Email</th>
+                      <th>Joined At</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="modalParticipantsBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- NOTIFICATIONS -->
