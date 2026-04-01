@@ -19,6 +19,33 @@ function adminAlert(msg, type) {
   adminAlert._t = setTimeout(function () { el.classList.remove('show'); }, 3200);
 }
 
+// Fallback notifier for new bookings (works even if realtime callbacks are delayed/missed).
+var _knownBookingIds = new Set();
+function primeBookingNotifier() {
+  try {
+    const current = (Store.get('bookings') || []).filter(function (b) { return !b.isEvent && b.status !== 'cancelled'; });
+    _knownBookingIds = new Set(current.map(function (b) { return String(b.id); }));
+  } catch (e) {
+    _knownBookingIds = new Set();
+  }
+}
+
+function checkNewBookingNotifications() {
+  const bookings = (Store.get('bookings') || []).filter(function (b) {
+    return !b.isEvent && b.status !== 'cancelled';
+  });
+  bookings.forEach(function (b) {
+    const id = String(b.id);
+    if (_knownBookingIds.has(id)) return;
+    _knownBookingIds.add(id);
+    const msg = 'New Booking: ' + (b.player || 'User') + ' booked ' + (b.courtName || 'court') + ' for ' + b.date + ' at ' + b.start;
+    adminAlert(msg, 'success');
+    if (Store && typeof Store.addNotification === 'function') {
+      Store.addNotification(msg, 'success');
+    }
+  });
+}
+
 function v(id) {
   var el = document.getElementById(id);
   return el ? el.value : '';
@@ -1045,6 +1072,7 @@ var renders = {
 (async function initAdmin() {
   await Store.init();
   showModule('userportal');
+  primeBookingNotifier();
 
   // Background sync guard: keep Events module updated even if cross-tab events are dropped.
   setInterval(function () {
@@ -1054,6 +1082,11 @@ var renders = {
       renderEvents();
     }
   }, 1500);
+
+  // Booking notification fallback poller (admin popup + notification log).
+  setInterval(function () {
+    checkNewBookingNotifications();
+  }, 2000);
 })();
 
 // Automatically refresh UI on background cross-tab or Supabase real-time updates
