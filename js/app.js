@@ -149,6 +149,7 @@ function renderEventsList() {
       String(e.type || '').trim().toLowerCase()
     ].join('|');
     const eventParticipants = participants.filter(p => {
+      if (!Store.isJoinedParticipant(p)) return false;
       const pRef = String(p.eventRef || '').toLowerCase().trim();
       const eId = String(e.id || '').toLowerCase().trim();
       if (pRef && pRef === eId) return true;
@@ -179,20 +180,22 @@ function renderEventsList() {
       const pEmail = String(p.userEmail || p.user_email || '').toLowerCase().trim();
       return currentEmail && pEmail === currentEmail.toLowerCase().trim();
     });
-    const btnText = !canJoin ? 'Event Passed' : (isJoined ? 'Already Joined' : 'Participation');
+    const joinedCount = eventParticipants.length;
+    const btnText = !canJoin ? 'Event Passed' : (isJoined ? 'Joined' : 'Participation');
     const btnClass = isJoined ? 'btn-success' : 'btn-primary';
     const joinAttr = encodeURIComponent(String(e.id));
+    const btnTitle = !canJoin ? '' : (isJoined ? 'Click to leave this event' : 'Register for this event');
 
     return `<div class="card card-pad card-accent-top court-card event-card-user" style="border-left:4px solid #6366f1;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
         <div><strong>${e.name}</strong> <span class="badge badge-accent">${e.type}</span></div>
-        <span class="badge badge-neutral" style="font-size:0.7rem">${eventParticipants.length} joined</span>
+        <span class="badge badge-neutral event-joined-badge" style="font-size:0.7rem;letter-spacing:0.02em">${joinedCount} joined</span>
       </div>
       <div style="font-size:0.85rem;margin-bottom:6px">Courts: ${courtNames || 'N/A'}</div>
       <div style="font-size:0.85rem;margin-bottom:6px">${e.date} · ${e.start}–${e.end}</div>
       ${participantsList}
       <div class="event-card-actions" style="margin-top:12px">
-        <button type="button" id="btn-join-${String(e.id).replace(/[^a-zA-Z0-9_-]/g, '_')}" class="btn ${btnClass} btn-full btn-join-event" data-join-event="${joinAttr}" ${!canJoin ? 'disabled' : ''}>${btnText}</button>
+        <button type="button" id="btn-join-${String(e.id).replace(/[^a-zA-Z0-9_-]/g, '_')}" class="btn ${btnClass} btn-full btn-join-event" data-join-event="${joinAttr}" title="${btnTitle.replace(/"/g, '&quot;')}" ${!canJoin ? 'disabled' : ''}>${btnText}</button>
       </div>
     </div>`;
   }).join('') : '<div class="empty-state" style="grid-column:1/-1">No upcoming events.</div>';
@@ -252,13 +255,13 @@ async function joinEvent(eventId) {
 
   const participants = Store.get('eventParticipants') || [];
   const existingEntry = participants.find(p => {
+    if (!Store.isJoinedParticipant(p)) return false;
     const pEId = String(p.eventId || p.event_id || '').toLowerCase().trim();
     const pEmail = String(p.userEmail || p.user_email || '').toLowerCase().trim();
     return pEId === String(eventId).toLowerCase().trim() && pEmail === userEmail.toLowerCase().trim();
   });
 
-  showAppAlert('info', 'Registering participation...');
-  // 10. OPTIMISTIC UI: Update button immediately to improve feel
+  showAppAlert('info', existingEntry ? 'Updating your registration…' : 'Registering participation…');
   const isRevoke = !!existingEntry;
   if (btn) {
     btn.disabled = true;
