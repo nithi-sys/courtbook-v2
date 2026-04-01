@@ -500,7 +500,7 @@ function renderEvents() {
       return c ? c.name : ('Court #' + cid);
     }).join(', ') || '—';
 
-    const eventParticipants = participants.filter(function (p) {
+    const eventParticipants = allParticipants.filter(function (p) {
       // Use both possible ID fields and ensure string comparison for reliability
       const pId = String(p.eventId || p.event_id || '');
       const eId = String(e.id || '');
