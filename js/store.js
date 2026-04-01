@@ -127,6 +127,14 @@ const Store = (() => {
   let localState = {
     pendingLocks: {}
   };
+  let syncChannel = null;
+  try {
+    if (typeof BroadcastChannel !== 'undefined') {
+      syncChannel = new BroadcastChannel('cb_sync');
+    }
+  } catch (e) {
+    syncChannel = null;
+  }
 
   /* ---- Core Initialization ---- */
   async function init() {
@@ -525,6 +533,13 @@ const Store = (() => {
       storageArea: localStorage
     });
     window.dispatchEvent(storageEvent);
+
+    // Cross-tab immediate sync channel (stronger than storage-only propagation).
+    if (syncChannel) {
+      try {
+        syncChannel.postMessage({ key: 'cb_' + key, value: val, ts: Date.now() });
+      } catch (e) { }
+    }
   }
 
   /* ---- Sync Setters for Database tables ---- */
@@ -1006,6 +1021,34 @@ const Store = (() => {
       else if (k === 'settings') cache.settings = val;
     } catch (err) {}
   });
+
+  if (syncChannel) {
+    syncChannel.onmessage = function (evt) {
+      try {
+        const msg = evt && evt.data ? evt.data : null;
+        if (!msg || !msg.key || !msg.key.startsWith('cb_')) return;
+        const k = msg.key.replace('cb_', '');
+        const val = msg.value;
+
+        if (k === 'events') cache.events = val;
+        else if (k === 'eventParticipants') cache.eventParticipants = val;
+        else if (k === 'notifications') cache.notifications = val;
+        else if (k === 'bookings') cache.bookings = val;
+        else if (k === 'courts') cache.courts = val;
+        else if (k === 'settings') cache.settings = val;
+
+        // Trigger existing UI listeners in both portals.
+        const syncEvent = new StorageEvent('storage', {
+          key: msg.key,
+          oldValue: null,
+          newValue: JSON.stringify(val),
+          url: window.location.href,
+          storageArea: localStorage
+        });
+        window.dispatchEvent(syncEvent);
+      } catch (e) { }
+    };
+  }
 
   return {
     init, get, updateSetting, setLocal,
