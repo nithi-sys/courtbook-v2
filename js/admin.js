@@ -492,7 +492,26 @@ async function deletePromo(i) {
 function renderEvents() {
   var events = Store.get('events') || [];
   var courts = Store.get('courts') || [];
-  var allParticipants = Store.get('eventParticipants') || [];
+  function getParticipantsForAdminView() {
+    var storeParticipants = Store.get('eventParticipants') || [];
+    var localParticipants = [];
+    try {
+      localParticipants = JSON.parse(localStorage.getItem('cb_eventParticipants')) || [];
+    } catch (e) {
+      localParticipants = [];
+    }
+    var combined = [].concat(storeParticipants);
+    localParticipants.forEach(function (lp) {
+      var exists = combined.some(function (sp) {
+        return (sp.id && lp.id && sp.id === lp.id) ||
+          (String(sp.eventRef || sp.eventId || sp.event_id || '').toLowerCase().trim() === String(lp.eventRef || lp.eventId || lp.event_id || '').toLowerCase().trim() &&
+            String(sp.userEmail || sp.user_email || '').toLowerCase().trim() === String(lp.userEmail || lp.user_email || '').toLowerCase().trim());
+      });
+      if (!exists) combined.push(lp);
+    });
+    return combined;
+  }
+  var allParticipants = getParticipantsForAdminView();
   function eventKey(ev) {
     return [
       String(ev.name || '').trim().toLowerCase(),
@@ -1026,6 +1045,15 @@ var renders = {
 (async function initAdmin() {
   await Store.init();
   showModule('userportal');
+
+  // Background sync guard: keep Events module updated even if cross-tab events are dropped.
+  setInterval(function () {
+    var activeModule = document.querySelector('.sidebar-item.active');
+    if (!activeModule) return;
+    if (activeModule.getAttribute('data-mod') === 'events' && typeof renderEvents === 'function') {
+      renderEvents();
+    }
+  }, 1500);
 })();
 
 // Automatically refresh UI on background cross-tab or Supabase real-time updates
