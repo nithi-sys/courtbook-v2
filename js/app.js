@@ -158,7 +158,7 @@ function renderEventsList() {
       const pEmail = String(p.userEmail || p.user_email || '').toLowerCase().trim();
       return currentEmail && pEmail === currentEmail.toLowerCase().trim();
     });
-    const btnText = !canJoin ? 'Event Passed' : (isJoined ? 'Joined (Click to Revoke)' : 'Participate');
+    const btnText = !canJoin ? 'Event Passed' : (isJoined ? '✓ Already Joined (Participating)' : 'Participate');
     const btnClass = isJoined ? 'btn-success' : 'btn-primary';
 
     return `<div class="card card-pad card-accent-top court-card" style="border-left:4px solid #6366f1;">
@@ -242,10 +242,6 @@ async function joinEvent(eventId) {
   try {
     let res;
     if (isRevoke) {
-      if (!confirm('Are you sure you want to revoke your participation?')) {
-        renderEventsList();
-        return;
-      }
       res = await Store.removeEventParticipant(eventId, userEmail);
     } else {
       res = await Store.addEventParticipant(eventId, { userEmail, player: playerName });
