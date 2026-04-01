@@ -500,8 +500,11 @@ function renderEvents() {
       return c ? c.name : ('Court #' + cid);
     }).join(', ') || '—';
 
-    var eventParticipants = allParticipants.filter(function (p) {
-      return String(p.eventId) === String(e.id);
+    const eventParticipants = participants.filter(function (p) {
+      // Use both possible ID fields and ensure string comparison for reliability
+      const pId = String(p.eventId || p.event_id || '');
+      const eId = String(e.id || '');
+      return pId === eId;
     });
 
     var participantHtml = eventParticipants.length

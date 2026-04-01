@@ -1,28 +1,26 @@
 const fs = require('fs');
 try {
     const code = fs.readFileSync('./js/auth.js', 'utf8');
-    const cmatch = code.match(/const SUPABASE_URL = '([^']+)'/);
-    const kmatch = code.match(/const SUPABASE_ANON_KEY = '([^']+)'/);
+    const urlMatch = code.match(/const SUPABASE_URL = '([^']+)'/);
+    const keyMatch = code.match(/const SUPABASE_ANON_KEY = '([^']+)'/);
+    if (!urlMatch || !keyMatch) {
+      console.log('Could not find Supabase URL/Key in js/auth.js');
+      process.exit(1);
+    }
     const { createClient } = require('@supabase/supabase-js');
-    const supabase = createClient(cmatch[1], kmatch[1]);
+    const supabase = createClient(urlMatch[1], keyMatch[1]);
 
-    supabase.from('bookings').insert([{
-        id: 'test_insert',
-        court_id: 1,
-        court_name: 'Test',
-        sport: 'Test',
-        player: '[EVENT] test',
-        user_email: 'admin@example.com',
-        date: '2026-03-01',
-        start_time: '11:00',
-        end_time: '14:00',
-        membership: 'none',
-        equipment: [],
-        players: 0,
-        cost: 0,
-        status: 'confirmed',
-        is_event: true
-    }]).then(({ data, error }) => {
-        console.log('Error:', error);
-    });
-} catch (e) { console.log(e); }
+    async function checkData() {
+      console.log('--- Checking Events ---');
+      const { data: events, error: eErr } = await supabase.from('events').select('*');
+      if (eErr) console.error('Events Error:', eErr);
+      else console.table(events);
+
+      console.log('\n--- Checking Event Participants ---');
+      const { data: participants, error: pErr } = await supabase.from('event_participants').select('*');
+      if (pErr) console.error('Participants Error:', pErr);
+      else console.table(participants);
+    }
+
+    checkData();
+} catch (e) { console.error('Script Error:', e); }

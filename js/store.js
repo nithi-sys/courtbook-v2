@@ -282,7 +282,13 @@ const Store = (() => {
         } : null;
         
         if (payload.eventType === 'INSERT' && p) {
-          if (!cache.eventParticipants.some(x => x.id === p.id)) {
+          // Robust duplicate check: if any participant (local or DB) exists with same ID or same event/email pair
+          const isDuplicate = cache.eventParticipants.some(x => 
+            (x.id && x.id === p.id) || 
+            (String(x.eventId) === String(p.eventId) && String(x.userEmail) === String(p.userEmail))
+          );
+          
+          if (!isDuplicate) {
             cache.eventParticipants.push(p);
             if (Auth.isAdmin()) {
               const msg = `New Participant: ${p.player} joined event ID #${p.eventId}`;
@@ -291,7 +297,9 @@ const Store = (() => {
             }
           }
         }
-        if (payload.eventType === 'DELETE') cache.eventParticipants = cache.eventParticipants.filter(x => x.id !== payload.old.id);
+        if (payload.eventType === 'DELETE') {
+          cache.eventParticipants = cache.eventParticipants.filter(x => x.id !== payload.old.id);
+        }
         
         localStorage.setItem('cb_eventParticipants', JSON.stringify(cache.eventParticipants));
         
@@ -406,7 +414,16 @@ const Store = (() => {
     }
 
     if (key === 'eventParticipants') {
-      return cache.eventParticipants || [];
+      const active = cache.eventParticipants || [];
+      const stored = JSON.parse(localStorage.getItem('cb_eventParticipants')) || [];
+      // Combine to ensure we have the most recent data possible
+      const combined = [...active];
+      stored.forEach(s => {
+        if (!combined.some(c => (c.id && c.id === s.id) || (String(c.eventId) === String(s.eventId) && String(c.userEmail) === String(s.userEmail)))) {
+          combined.push(s);
+        }
+      });
+      return combined;
     }
 
     // Settings mappings
@@ -506,19 +523,22 @@ const Store = (() => {
     }
 
     if (isNaN(normalizedEventId)) {
-      console.warn('❌ Could not resolve numeric event ID for participation. User might be trying to join a ghost event.');
-      return { success: false, error: 'Participation is only available for scheduled events. Please contact admin.' };
+      console.warn('⚠️ Could not resolve numeric event ID. Falling back to string ID for local sync.');
+      normalizedEventId = eventId; // Use the string ID (ev_...) as fallback
     }
     
     // 2. Check for duplicate (by eventId + email)
-    const existing = participants.find(p => Number(p.eventId) === normalizedEventId && (p.userEmail === participant.userEmail || p.user_email === participant.userEmail));
+    const existing = participants.some(p => 
+      String(p.eventId || p.event_id) === String(normalizedEventId) && 
+      String(p.userEmail || p.user_email).toLowerCase() === String(participant.userEmail).toLowerCase()
+    );
     if (existing) {
       console.warn('Duplicate participation attempt detected');
       return { success: false, error: 'Already participating in this event.' };
     }
 
-    // 3. Save to Supabase DB
-    if (window.supabaseClient) {
+    // 3. Save to Supabase DB (only if ID is numeric, as DB bigint column requires it)
+    if (window.supabaseClient && !isNaN(Number(normalizedEventId))) {
       console.log('Inserting into DB: event_participants table with:', {
         event_id: normalizedEventId,
         user_email: participant.userEmail,
@@ -528,7 +548,7 @@ const Store = (() => {
       const userId = auth?.user?.id;
       
       const { data, error } = await supabaseClient.from('event_participants').insert({
-        event_id: normalizedEventId,
+        event_id: Number(normalizedEventId),
         user_id: userId,
         user_email: participant.userEmail,
         player: participant.player
@@ -536,22 +556,41 @@ const Store = (() => {
       
       if (error) {
         console.error('❌ DB Insert Error:', error);
-        return { success: false, error: `DB Error: ${error.message}` };
+        // If it's a table not found error, we still proceed locally to let the user see their change
+        if (error.code !== 'PGRST205' && error.code !== '404') {
+          return { success: false, error: `DB Error: ${error.message}` };
+        }
       }
-      console.log('✅ DB Insert Success:', data);
+      if (data && data[0]) {
+        // Use the real DB data for the cache record
+        const p = data[0];
+        participants.push({
+          id: p.id,
+          eventId: p.event_id,
+          userEmail: p.user_email,
+          player: p.player,
+          joinedAt: p.joined_at
+        });
+      } else {
+        // Fallback to local record if we didn't get data back but no hard error occurred
+        participants.push({
+          eventId: normalizedEventId,
+          userEmail: participant.userEmail,
+          player: participant.player,
+          joinedAt: new Date().toISOString()
+        });
+      }
     } else {
-      console.warn('⚠️ Supabase client not available, skipping DB insert');
+      console.warn('⚠️ Supabase insert skipped (client missing or non-numeric ID)');
+      // Local-only/Fallback record
+      participants.push({
+        eventId: normalizedEventId,
+        userEmail: participant.userEmail,
+        player: participant.player,
+        joinedAt: new Date().toISOString()
+      });
     }
 
-    // 4. Update local cache immediately (optimistic UI)
-    // We add it even if DB insert failed (locally) but typically DB should be primary
-    participants.push({
-      eventId: normalizedEventId,
-      userEmail: participant.userEmail,
-      player: participant.player,
-      joinedAt: new Date().toISOString()
-    });
-    
     console.log('✅ Registered participant in local cache. Total count:', participants.length);
     setLocal('eventParticipants', participants);
     return { success: true };

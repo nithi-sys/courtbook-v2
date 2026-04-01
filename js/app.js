@@ -131,7 +131,11 @@ function renderEventsList() {
   document.getElementById('eventCount').textContent = `${events.length} events`;
 
   const html = events.length ? events.map(e => {
-    const eventParticipants = participants.filter(p => String(p.eventId) === String(e.id));
+    const eventParticipants = participants.filter(p => {
+      const pId = String(p.eventId || p.event_id || '');
+      const eId = String(e.id || '');
+      return pId === eId;
+    });
     const courtNames = (Store.get('courts') || []).filter(c => (e.courtIds || []).some(cid => Number(cid) === Number(c.id))).map(c => c.name).join(', ');
     const canJoin = e.date >= today;
 
