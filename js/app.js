@@ -134,6 +134,10 @@ function renderEventsList() {
     const eventParticipants = participants.filter(p => String(p.eventId) === String(e.id));
     const courtNames = (Store.get('courts') || []).filter(c => (e.courtIds || []).some(cid => Number(cid) === Number(c.id))).map(c => c.name).join(', ');
     const canJoin = e.date >= today;
+
+    const participantNames = eventParticipants.map(p => p.player).join(', ');
+    const participantsList = participantNames ? `<div style="font-size:0.75rem;color:var(--muted);margin-top:6px;border-top:1px solid #f3f4f6;padding-top:6px"><strong>Joined:</strong> ${participantNames}</div>` : '';
+
     return `<div class="card card-pad card-accent-top court-card" style="border-left:4px solid #6366f1;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
         <div><strong>${e.name}</strong> <span class="badge badge-accent">${e.type}</span></div>
@@ -141,7 +145,10 @@ function renderEventsList() {
       </div>
       <div style="font-size:0.85rem;margin-bottom:6px">Courts: ${courtNames || 'N/A'}</div>
       <div style="font-size:0.85rem;margin-bottom:6px">${e.date} · ${e.start}–${e.end}</div>
-      <button class="btn btn-secondary btn-full" ${canJoin ? '' : 'disabled'} onclick="joinEvent('${e.id}')">${canJoin ? 'Participate' : 'Event Passed'}</button>
+      ${participantsList}
+      <div style="margin-top:12px">
+        <button class="btn btn-secondary btn-full" ${canJoin ? '' : 'disabled'} onclick="joinEvent('${e.id}')">${canJoin ? 'Participate' : 'Event Passed'}</button>
+      </div>
     </div>`;
   }).join('') : '<div class="empty-state" style="grid-column:1/-1">No upcoming events.</div>';
 
