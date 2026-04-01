@@ -386,8 +386,7 @@ const Store = (() => {
     }
 
     if (key === 'eventParticipants') {
-      if (cache.eventParticipants && cache.eventParticipants.length) return cache.eventParticipants;
-      return JSON.parse(localStorage.getItem('cb_eventParticipants')) || [];
+      return cache.eventParticipants || [];
     }
 
     // Settings mappings
@@ -488,11 +487,12 @@ const Store = (() => {
 
     // Update local cache immediately (realtime will also sync it)
     participants.push({
-      eventId,
+      eventId: Number(eventId),
       userEmail: participant.userEmail,
       player: participant.player,
       joinedAt: new Date().toISOString()
     });
+    console.log('Registered participant locally:', participant.player, 'for event', eventId);
     setLocal('eventParticipants', participants);
     return { success: true };
   }
