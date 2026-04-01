@@ -431,9 +431,14 @@ const Store = (() => {
     else if (key === 'bookings') cache.bookings = val;
 
     localStorage.setItem('cb_' + key, JSON.stringify(val));
-    const ev = new Event('storage');
-    ev.key = 'cb_' + key;
-    window.dispatchEvent(ev);
+    const storageEvent = new StorageEvent('storage', {
+      key: 'cb_' + key,
+      oldValue: null,
+      newValue: JSON.stringify(val),
+      url: window.location.href,
+      storageArea: localStorage
+    });
+    window.dispatchEvent(storageEvent);
   }
 
   /* ---- Sync Setters for Database tables ---- */

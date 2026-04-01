@@ -175,11 +175,7 @@ async function joinEvent(eventId) {
 
   showAppAlert('success', `✅ You are now participating in "${ev.name}". The admin has been notified.`);
   renderEventsList();
-
-  // Ensure admin dashboard receives update if open in another tab
-  const storageEvent = new Event('storage');
-  storageEvent.key = 'cb_eventParticipants';
-  window.dispatchEvent(storageEvent);
+  // The Store.setLocal in addEventParticipant already triggers a proper storage event.
 }
 
 function isCurrentlyBusy(courtId, bookings) {
