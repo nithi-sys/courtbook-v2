@@ -77,6 +77,20 @@
     .promo-row input {
       flex: 1;
     }
+
+    /* Participation button — stay above card accents; clicks must not be eaten by re-renders */
+    .event-card-user .event-card-actions {
+      position: relative;
+      z-index: 2;
+    }
+
+    .event-card-user .btn-join-event {
+      position: relative;
+      z-index: 3;
+      pointer-events: auto;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
   </style>
 </head>
 

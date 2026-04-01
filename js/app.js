@@ -4,6 +4,16 @@ const todayStr = today.toISOString().split('T')[0];
 let step = 1;
 let selection = { courtId: null, date: todayStr, start: '', end: '', membership: 'none', equipment: [], bundle: null, players: 1, promoCode: '' };
 
+/** Debounce — storage/realtime was re-rendering the events grid every few seconds and nuking the Participation button mid-click. */
+let _renderEventsListTimer = null;
+function scheduleRenderEventsList() {
+  clearTimeout(_renderEventsListTimer);
+  _renderEventsListTimer = setTimeout(function () {
+    _renderEventsListTimer = null;
+    renderEventsList();
+  }, 450);
+}
+
 document.getElementById('headerDate').textContent = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 document.getElementById('bookDate').value = todayStr;
 document.getElementById('bookDate').min = todayStr;
@@ -171,8 +181,9 @@ function renderEventsList() {
     });
     const btnText = !canJoin ? 'Event Passed' : (isJoined ? 'Joined' : 'Participation');
     const btnClass = isJoined ? 'btn-success' : 'btn-primary';
+    const joinAttr = encodeURIComponent(String(e.id));
 
-    return `<div class="card card-pad card-accent-top court-card" style="border-left:4px solid #6366f1;">
+    return `<div class="card card-pad card-accent-top court-card event-card-user" style="border-left:4px solid #6366f1;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
         <div><strong>${e.name}</strong> <span class="badge badge-accent">${e.type}</span></div>
         <span class="badge badge-neutral" style="font-size:0.7rem">${eventParticipants.length} joined</span>
@@ -180,8 +191,8 @@ function renderEventsList() {
       <div style="font-size:0.85rem;margin-bottom:6px">Courts: ${courtNames || 'N/A'}</div>
       <div style="font-size:0.85rem;margin-bottom:6px">${e.date} · ${e.start}–${e.end}</div>
       ${participantsList}
-      <div style="margin-top:12px">
-        <button id="btn-join-${e.id}" class="btn ${btnClass} btn-full" ${!canJoin ? 'disabled' : ''} onclick="joinEvent('${e.id}')">${btnText}</button>
+      <div class="event-card-actions" style="margin-top:12px">
+        <button type="button" id="btn-join-${String(e.id).replace(/[^a-zA-Z0-9_-]/g, '_')}" class="btn ${btnClass} btn-full btn-join-event" data-join-event="${joinAttr}" ${!canJoin ? 'disabled' : ''}>${btnText}</button>
       </div>
     </div>`;
   }).join('') : '<div class="empty-state" style="grid-column:1/-1">No upcoming events.</div>';
@@ -191,7 +202,12 @@ function renderEventsList() {
 }
 
 async function joinEvent(eventId) {
-  const btn = document.getElementById(`btn-join-${eventId}`);
+  let btn = null;
+  document.querySelectorAll('button.btn-join-event[data-join-event]').forEach(function (b) {
+    try {
+      if (decodeURIComponent(b.getAttribute('data-join-event') || '') === String(eventId)) btn = b;
+    } catch (e) { }
+  });
   if (btn) {
     btn.disabled = true;
     btn.style.opacity = '0.7';
@@ -723,6 +739,22 @@ function setToday() { }
     }
   }
 
+  const eventsGridEl = document.getElementById('eventsGrid');
+  if (eventsGridEl) {
+    eventsGridEl.addEventListener('click', function (ev) {
+      const btn = ev.target.closest('button[data-join-event]');
+      if (!btn || btn.disabled) return;
+      ev.preventDefault();
+      const raw = btn.getAttribute('data-join-event');
+      if (raw == null || raw === '') return;
+      try {
+        joinEvent(decodeURIComponent(raw));
+      } catch (err) {
+        console.error('joinEvent:', err);
+      }
+    });
+  }
+
   renderCourts();
   renderEventsList();
   renderBookingsTable();
@@ -733,21 +765,29 @@ function setToday() { }
 window.addEventListener('storage', (e) => {
   if (e && e.key && !e.key.startsWith('cb_')) return;
 
-  // Only re-render if the user is not actively interacting with a modal to prevent UX jumps
-  if (step === 1) renderCourts();
-
   if (e.key === 'cb_courts') {
     if (step === 1) renderCourts();
     else if (step === 2) renderDateTimeStep();
     else if (step === 3) renderAddOns();
     else if (step === 4) renderConfirm();
+    scheduleRenderEventsList();
+    return;
   }
 
-  if (e.key === 'cb_bookings' || e.key === 'cb_events' || e.key === 'cb_eventParticipants') {
+  // Bookings change often (realtime) — do not rebuild the events grid every time (breaks Participation clicks).
+  if (e.key === 'cb_bookings') {
     if (step === 1) renderCourts();
     else if (step === 2) renderSlotGrid();
     renderBookingsTable();
-    renderEventsList();
+    return;
+  }
+
+  if (e.key === 'cb_events' || e.key === 'cb_eventParticipants') {
+    if (step === 1) renderCourts();
+    else if (step === 2) renderSlotGrid();
+    renderBookingsTable();
+    scheduleRenderEventsList();
+    return;
   }
 
   if (e.key === 'cb_timeSlots' && step === 2) renderSlotGrid();
