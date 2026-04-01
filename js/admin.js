@@ -611,7 +611,7 @@ function resolveParticipantEventMeta(p, events) {
 }
 
 /* ======== EVENTS & TOURNAMENTS — fix 10 ======== */
-/** @param {boolean} [skipCourtPicker] If true, only refresh event/participant tables (keeps court checkboxes stable while clicking). */
+/** @param {boolean} [skipCourtPicker] If true, only refresh the events table (keeps court checkboxes stable while clicking). */
 function renderEvents(skipCourtPicker) {
   var events = Store.get('events') || [];
   var courts = Store.get('courts') || [];
@@ -664,7 +664,10 @@ function renderEvents(skipCourtPicker) {
       return false;
     });
 
-    const pList = eventParticipants.map(function (p) { return p.player; }).join(', ') || '<span style="color:var(--muted)">None yet</span>';
+    var pListPlain = eventParticipants.map(function (p) { return p.player || '—'; }).join(', ');
+    var pListHtml = eventParticipants.length
+      ? eventParticipants.map(function (p) { return adminEscapeHtml(p.player || '—'); }).join(', ')
+      : '<span style="color:var(--muted)">None yet</span>';
 
     return '<tr>' +
       '<td><strong>' + e.name + '</strong></td>' +
@@ -672,45 +675,10 @@ function renderEvents(skipCourtPicker) {
       '<td class="td-mono">' + e.date + '</td>' +
       '<td class="td-mono">' + e.start + '–' + e.end + '</td>' +
       '<td><span class="badge badge-accent">' + e.type + '</span></td>' +
-      '<td style="font-size:0.75rem;max-width:200px;overflow:hidden;text-overflow:ellipsis" title="' + adminEscapeHtml(pList.replace(/<[^>]+>/g, '')) + '">' + pList + '</td>' +
+      '<td style="font-size:0.75rem;max-width:320px;overflow:hidden;text-overflow:ellipsis" title="' + adminEscapeHtml(pListPlain) + '">' + pListHtml + '</td>' +
       '<td><button class="btn btn-sm btn-danger" onclick="deleteEvent(' + i + ')">Remove</button></td>' +
       '</tr>';
   }).join('') || '<tr><td colspan="7"><div class="empty-state">No events scheduled.</div></td></tr>';
-
-  var participantsBody = document.getElementById('eventParticipantsBody');
-  var countEl = document.getElementById('eventParticipantsCount');
-  if (countEl) countEl.textContent = allParticipants.length + ' joined';
-
-  if (participantsBody) {
-    const pRows = allParticipants.map(function (p) {
-      const meta = resolveParticipantEventMeta(p, events);
-      var eventTitle = meta.eventTitle;
-      var evDate = meta.evDate;
-      var evStart = meta.evStart;
-      var evEnd = meta.evEnd;
-      var email = p.userEmail || p.user_email || '—';
-      var joined = p.joinedAt || p.joined_at;
-      var joinedSub = joined
-        ? '<div style="font-size:0.6rem;color:var(--muted);margin-top:2px">Joined ' + adminEscapeHtml(new Date(joined).toLocaleString()) + '</div>'
-        : '';
-
-      var removeBtn = (p.id != null && p.id !== '')
-        ? '<button class="btn btn-sm btn-danger" onclick="adminRemoveEventParticipantByIdOnly(' + Number(p.id) + ')">Remove</button>'
-        : '<button class="btn btn-sm btn-danger" onclick=\'adminRemoveEventParticipantLoose(' + JSON.stringify(String(p.eventId || p.event_id || '')) + ',' + JSON.stringify(String(p.userEmail || p.user_email || '')) + ')\'>Remove</button>';
-
-      return '<tr>' +
-        '<td><strong>' + adminEscapeHtml(eventTitle) + '</strong><div style="font-size:0.65rem;color:var(--muted);margin-top:2px">' + adminEscapeHtml(email) + '</div></td>' +
-        '<td>' + adminEscapeHtml(p.player || '—') + '</td>' +
-        '<td>—</td>' +
-        '<td class="td-mono">1</td>' +
-        '<td class="td-mono">' + adminEscapeHtml(evDate) + '</td>' +
-        '<td class="td-mono">' + adminEscapeHtml(evStart + '–' + evEnd) + '</td>' +
-        '<td class="td-amount">—</td>' +
-        '<td><span class="badge badge-available">Joined</span>' + joinedSub + '</td>' +
-        '<td>' + removeBtn + '</td></tr>';
-    });
-    participantsBody.innerHTML = pRows.join('') || '<tr><td colspan="9"><div class="empty-state">No participants joined yet.</div></td></tr>';
-  }
 
   var wrap = document.getElementById('eventCourtPicker');
   if (wrap && !skipCourtPicker) {
@@ -726,22 +694,6 @@ function renderEvents(skipCourtPicker) {
         '</div>';
     }).join('') || '<div style="font-size:0.82rem;color:var(--muted)">No active courts. Open <strong>Configuration → Courts</strong> and activate at least one court.</div>';
   }
-}
-
-async function adminRemoveEventParticipantByIdOnly(id) {
-  if (!confirm('Remove this participant from the event?')) return;
-  const res = await Store.removeEventParticipantById(id);
-  if (!res.success) return adminAlert(res.error || 'Could not remove.', 'error');
-  adminAlert('Participant removed.');
-  renderEvents(true);
-}
-
-async function adminRemoveEventParticipantLoose(eventId, userEmail) {
-  if (!confirm('Remove this participant from the event?')) return;
-  const res = await Store.removeEventParticipant(eventId, userEmail);
-  if (!res.success) return adminAlert(res.error || 'Could not remove.', 'error');
-  adminAlert('Participant removed.');
-  renderEvents(true);
 }
 
 async function addEvent() {
