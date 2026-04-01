@@ -744,8 +744,8 @@ const Store = (() => {
       return String(p.eventId || p.event_id) === String(normalizedEventId);
     });
     if (existing) {
-      console.warn('Duplicate participation attempt detected');
-      return { success: false, error: 'Already participating in this event.' };
+      console.log('User already participating locally.');
+      return { success: true, message: 'Already joined.' };
     }
 
     // 3. Ensure we have a numeric event id for the DB. If not, try to resolve from DB or create event record when possible.

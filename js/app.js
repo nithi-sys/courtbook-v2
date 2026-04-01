@@ -261,28 +261,35 @@ async function joinEvent(eventId) {
   var ident = getIdentityForEventParticipation();
   if (!ident.userEmail || !ident.playerName) return;
 
-  var alreadyJoined = isUserJoinedEvent(eventId, ident.userEmail);
+  // Change UI immediately for instant feedback
   btn.disabled = true;
+  const originalText = btn.innerText;
+  const originalClass = btn.className;
+  btn.innerText = 'Joined';
+  btn.classList.remove('btn-primary');
+  btn.classList.add('btn-success');
 
   try {
-    if (alreadyJoined) {
-      var resOut = await Store.removeEventParticipant(eventId, ident.userEmail);
-      if (!resOut.success && resOut.error) {
-        console.warn('DB Revoke Error:', resOut.error);
-      }
-      showAppAlert('info', 'Participation Revoked');
-    } else {
-      var resIn = await Store.addEventParticipant(eventId, {
-        userEmail: ident.userEmail,
-        player: ident.playerName
-      });
+    var resIn = await Store.addEventParticipant(eventId, {
+      userEmail: ident.userEmail,
+      player: ident.playerName,
+      sourceEvent: ev
+    });
 
-      if (resIn.success) {
-        showAppAlert('success', resIn.message === 'Already joined.' ? 'You have already joined!' : 'Joined Successfully!');
-      } else {
-        showAppAlert('error', resIn.error || 'Failed to join event.');
-      }
+    if (resIn.success) {
+      showAppAlert('success', resIn.message === 'Already joined.' ? 'You have already joined!' : 'Joined Successfully!');
+    } else {
+      // Revert if failed
+      btn.disabled = false;
+      btn.innerText = originalText;
+      btn.className = originalClass;
+      showAppAlert('error', resIn.error || 'Failed to join event.');
     }
+  } catch (err) {
+    btn.disabled = false;
+    btn.innerText = originalText;
+    btn.className = originalClass;
+    showAppAlert('error', 'An error occurred.');
   } finally {
     renderEventsList();
   }
