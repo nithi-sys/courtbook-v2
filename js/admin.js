@@ -83,7 +83,7 @@ function checkNewParticipantNotifications() {
   if (foundNew) {
     const activeModule = document.querySelector('.sidebar-item.active');
     if (activeModule && activeModule.getAttribute('data-mod') === 'events') {
-      if (typeof renderEvents === 'function') renderEvents();
+      if (typeof renderEvents === 'function') renderEvents(true);
     }
   }
 }
@@ -558,7 +558,8 @@ async function deletePromo(i) {
 }
 
 /* ======== EVENTS & TOURNAMENTS — fix 10 ======== */
-function renderEvents() {
+/** @param {boolean} [skipCourtPicker] If true, only refresh event/participant tables (keeps court checkboxes stable while clicking). */
+function renderEvents(skipCourtPicker) {
   var events = Store.get('events') || [];
   var courts = Store.get('courts') || [];
   function getParticipantsForAdminView() {
@@ -693,15 +694,16 @@ function renderEvents() {
   }
 
   var wrap = document.getElementById('eventCourtPicker');
-  if (wrap) {
+  if (wrap && !skipCourtPicker) {
     var checkedIds = Array.from(wrap.querySelectorAll('input:checked')).map(function(el) { return String(el.value); });
-    wrap.innerHTML = courts.filter(c => c.active).map(function (c) {
+    var activeCourts = courts.filter(function (c) { return c.active; });
+    wrap.innerHTML = activeCourts.map(function (c) {
       var isChecked = checkedIds.indexOf(String(c.id)) > -1 ? 'checked' : '';
-      return '<label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;padding:4px 0">' +
-        '<input type="checkbox" value="' + c.id + '" style="width:auto;margin:0" ' + isChecked + '> ' +
-        c.name + ' (' + c.sport + ')' +
+      return '<label class="event-court-option">' +
+        '<input type="checkbox" value="' + c.id + '" ' + isChecked + '> ' +
+        '<span>' + c.name + ' (' + c.sport + ')</span>' +
         '</label>';
-    }).join('') || '<div style="font-size:0.82rem;color:var(--muted)">No active courts available</div>';
+    }).join('') || '<div style="font-size:0.82rem;color:var(--muted)">No active courts. Open <strong>Configuration → Courts</strong> and activate at least one court.</div>';
   }
 }
 
@@ -710,7 +712,7 @@ async function adminRemoveEventParticipantByIdOnly(id) {
   const res = await Store.removeEventParticipantById(id);
   if (!res.success) return adminAlert(res.error || 'Could not remove.', 'error');
   adminAlert('Participant removed.');
-  renderEvents();
+  renderEvents(true);
 }
 
 async function adminRemoveEventParticipantLoose(eventId, userEmail) {
@@ -718,7 +720,7 @@ async function adminRemoveEventParticipantLoose(eventId, userEmail) {
   const res = await Store.removeEventParticipant(eventId, userEmail);
   if (!res.success) return adminAlert(res.error || 'Could not remove.', 'error');
   adminAlert('Participant removed.');
-  renderEvents();
+  renderEvents(true);
 }
 
 async function addEvent() {
@@ -876,7 +878,7 @@ async function deleteEvent(i) {
   // 3. Always clear it locally so it disappears from UI immediately
   events.splice(i, 1);
   Store.setLocal('events', events);
-  renderEvents();
+  renderEvents(true);
   adminAlert('Event successfully cancelled and courts unblocked.', 'success');
 }
 /* ======== BOOKINGS & WAITLIST ======== */
@@ -1166,19 +1168,16 @@ var renders = {
 window.addEventListener('storage', (e) => {
   if (e && e.key && !e.key.startsWith('cb_')) return;
 
-  // Refresh the currently active module panel
   const activeModule = document.querySelector('.sidebar-item.active');
-  if (activeModule) {
-    const modId = activeModule.getAttribute('data-mod');
-    if (modId && typeof renders[modId] === 'function') {
-      renders[modId]();
-    }
+  const modId = activeModule ? activeModule.getAttribute('data-mod') : null;
+
+  // Participant-only updates: refresh tables without rebuilding court checkboxes (fixes unusable picker)
+  if (e && e.key === 'cb_eventParticipants' && modId === 'events') {
+    if (typeof renderEvents === 'function') renderEvents(true);
+    return;
   }
 
-  // For event participant changes, always refresh event table (and keep counters in sync)
-  if (e && e.key === 'cb_eventParticipants') {
-    if (typeof renderEvents === 'function') {
-      renderEvents();
-    }
+  if (activeModule && modId && typeof renders[modId] === 'function') {
+    renders[modId]();
   }
 });

@@ -1260,3 +1260,28 @@ footer {
     padding: 1rem;
   }
 }
+
+/* Events module — court checkboxes must stay clickable (not replaced mid-click by re-renders) */
+.event-court-picker .event-court-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  padding: 6px 0;
+  user-select: none;
+}
+
+.event-court-picker .event-court-option input[type="checkbox"] {
+  width: 1.15rem;
+  height: 1.15rem;
+  min-width: 1.15rem;
+  min-height: 1.15rem;
+  margin: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--accent);
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+}
