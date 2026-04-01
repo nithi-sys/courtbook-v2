@@ -444,10 +444,14 @@ const Store = (() => {
       const events = cache.events || [];
       return combined.map(p => {
         const hasMeta = p.eventKey && p.eventName && p.eventDate && p.eventStart && p.eventEnd;
-        if (hasMeta) return p;
+        const base = { ...p };
+        if (!base.eventRef && (base.eventId || base.event_id)) {
+          base.eventRef = String(base.eventId || base.event_id).toLowerCase().trim();
+        }
+        if (hasMeta) return base;
 
         const ev = events.find(e => String(e.id || '').toLowerCase().trim() === String(p.eventId || p.event_id || '').toLowerCase().trim());
-        if (!ev) return p;
+        if (!ev) return base;
 
         const derivedKey = [
           String(ev.name || '').trim().toLowerCase(),
@@ -458,13 +462,13 @@ const Store = (() => {
         ].join('|');
 
         return {
-          ...p,
-          eventName: p.eventName || ev.name,
-          eventDate: p.eventDate || ev.date,
-          eventStart: p.eventStart || ev.start,
-          eventEnd: p.eventEnd || ev.end,
-          eventType: p.eventType || ev.type,
-          eventKey: p.eventKey || derivedKey
+          ...base,
+          eventName: base.eventName || ev.name,
+          eventDate: base.eventDate || ev.date,
+          eventStart: base.eventStart || ev.start,
+          eventEnd: base.eventEnd || ev.end,
+          eventType: base.eventType || ev.type,
+          eventKey: base.eventKey || derivedKey
         };
       });
     }
@@ -559,6 +563,7 @@ const Store = (() => {
       eventEnd: sourceEvent.end,
       eventType: sourceEvent.type
     } : {};
+    const eventRef = String(eventId || '').toLowerCase().trim();
     const eventKey = sourceEvent ? [
       String(sourceEvent.name || '').trim().toLowerCase(),
       String(sourceEvent.date || '').trim(),
@@ -665,6 +670,7 @@ const Store = (() => {
         participants.push({
           id: p.id,
           eventId: p.event_id,
+          eventRef: eventRef,
           userEmail: p.user_email,
           player: p.player,
           joinedAt: p.joined_at,
@@ -675,6 +681,7 @@ const Store = (() => {
         // Fallback to local record if we didn't get data back but no hard error occurred
         participants.push({
           eventId: normalizedEventId,
+          eventRef: eventRef,
           userEmail: participant.userEmail,
           player: participant.player,
           joinedAt: new Date().toISOString(),
@@ -687,6 +694,7 @@ const Store = (() => {
       // Local-only/Fallback record
       participants.push({
         eventId: normalizedEventId,
+        eventRef: eventRef,
         userEmail: participant.userEmail,
         player: participant.player,
         joinedAt: new Date().toISOString(),

@@ -139,10 +139,12 @@ function renderEventsList() {
       String(e.type || '').trim().toLowerCase()
     ].join('|');
     const eventParticipants = participants.filter(p => {
+      const pRef = String(p.eventRef || '').toLowerCase().trim();
+      const eId = String(e.id || '').toLowerCase().trim();
+      if (pRef && pRef === eId) return true;
       const pKey = String(p.eventKey || '').trim();
       if (pKey && pKey === eKey) return true;
       const pId = String(p.eventId || p.event_id || '').toLowerCase().trim();
-      const eId = String(e.id || '').toLowerCase().trim();
       if (pId === eId) return true;
       const isRecon = eId.startsWith('ev_');
       const pIdIsNumeric = !isNaN(Number(pId)) && pId !== '';

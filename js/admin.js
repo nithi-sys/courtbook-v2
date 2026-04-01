@@ -510,6 +510,9 @@ function renderEvents() {
     }).join(', ') || '—';
 
     const eventParticipants = allParticipants.filter(function (p) {
+      const pRef = String(p.eventRef || '').toLowerCase().trim();
+      const eId = String(e.id || '').toLowerCase().trim();
+      if (pRef && pRef === eId) return true;
       const pKey = String(p.eventKey || '').trim();
       if (pKey && pKey === eventKey(e)) return true;
       const pName = String(p.eventName || '').trim();
@@ -521,7 +524,6 @@ function renderEvents() {
       }
       // 1. Direct ID match (most reliable)
       const pId = String(p.eventId || p.event_id || '').toLowerCase().trim();
-      const eId = String(e.id || '').toLowerCase().trim();
       if (pId === eId) return true;
 
       // 2. Fuzzy match for Fallback (ev_...) vs Formal IDs (numeric)
