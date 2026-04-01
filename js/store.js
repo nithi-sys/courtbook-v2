@@ -472,11 +472,14 @@ const Store = (() => {
 
   // Local/Transient Setters (for waitlist, notifications, etc)
   function setLocal(key, val) {
-    if (key === 'pendingLocks') localState.pendingLocks = val;
-    else if (key === 'notifications') cache.notifications = val;
+    // Always update in-memory cache immediately to ensure same-tab consistency
+    if (key === 'settings') cache.settings = val;
     else if (key === 'events') cache.events = val;
     else if (key === 'eventParticipants') cache.eventParticipants = val;
     else if (key === 'bookings') cache.bookings = val;
+    else if (key === 'courts') cache.courts = val;
+    else if (key === 'notifications') cache.notifications = val;
+    else if (key === 'pendingLocks') localState.pendingLocks = val;
 
     localStorage.setItem('cb_' + key, JSON.stringify(val));
     const storageEvent = new StorageEvent('storage', {

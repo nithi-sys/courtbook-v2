@@ -252,6 +252,11 @@ async function joinEvent(eventId) {
     }
 
     console.log('Store participation action result:', res);
+    
+    if (res.success) {
+      await Store.init(); // Refresh cache
+    }
+
     if (!res.success) {
       console.error('❌ Action failed:', res.error);
       showAppAlert('error', `❌ ${res.error || 'Request failed.'}`);
