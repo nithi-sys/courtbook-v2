@@ -532,21 +532,22 @@ function renderEvents() {
       return false;
     });
 
-    var participantHtml = eventParticipants.length
+    var participantsCell = eventParticipants.length
       ? eventParticipants.map(function (p) {
-        return '<div style="margin-top:4px;font-size:0.75rem;color:var(--muted)"><span class="badge badge-neutral" style="font-size:0.65rem;padding:2px 4px;margin-right:4px">Participant</span>' + p.player + '</div>';
+        return '<span class="badge badge-neutral" style="margin:2px 4px 2px 0;display:inline-block">' + p.player + '</span>';
       }).join('')
-      : '';
+      : '<span style="color:var(--muted);font-size:0.75rem">—</span>';
 
     return '<tr>' +
-      '<td><strong>' + e.name + '</strong>' + participantHtml + '</td>' +
+      '<td><strong>' + e.name + '</strong></td>' +
       '<td>' + courtNames + '</td>' +
+      '<td>' + participantsCell + '</td>' +
       '<td class="td-mono">' + e.date + '</td>' +
       '<td class="td-mono">' + e.start + '–' + e.end + '</td>' +
       '<td><span class="badge badge-accent">' + e.type + '</span></td>' +
       '<td><button class="btn btn-sm btn-danger" onclick="deleteEvent(' + i + ')">Remove</button></td>' +
       '</tr>';
-  }).join('') || '<tr><td colspan="6"><div class="empty-state">No events scheduled.</div></td></tr>';
+  }).join('') || '<tr><td colspan="7"><div class="empty-state">No events scheduled.</div></td></tr>';
 
   var wrap = document.getElementById('eventCourtPicker');
   if (wrap) {
