@@ -699,10 +699,12 @@ function renderEvents(skipCourtPicker) {
     var activeCourts = courts.filter(function (c) { return c.active; });
     wrap.innerHTML = activeCourts.map(function (c) {
       var isChecked = checkedIds.indexOf(String(c.id)) > -1 ? 'checked' : '';
-      return '<label class="event-court-option">' +
-        '<input type="checkbox" value="' + c.id + '" ' + isChecked + '> ' +
-        '<span>' + c.name + ' (' + c.sport + ')</span>' +
-        '</label>';
+      var cid = String(c.id).replace(/[^a-zA-Z0-9_-]/g, '_');
+      var inputId = 'eventCourtPick_' + cid;
+      return '<div class="event-court-option">' +
+        '<input type="checkbox" id="' + inputId + '" value="' + c.id + '" ' + isChecked + '>' +
+        '<label for="' + inputId + '">' + adminEscapeHtml(c.name) + ' (' + adminEscapeHtml(c.sport) + ')</label>' +
+        '</div>';
     }).join('') || '<div style="font-size:0.82rem;color:var(--muted)">No active courts. Open <strong>Configuration → Courts</strong> and activate at least one court.</div>';
   }
 }
@@ -1170,10 +1172,17 @@ window.addEventListener('storage', (e) => {
 
   const activeModule = document.querySelector('.sidebar-item.active');
   const modId = activeModule ? activeModule.getAttribute('data-mod') : null;
+  const key = e && e.key;
 
-  // Participant-only updates: refresh tables without rebuilding court checkboxes (fixes unusable picker)
-  if (e && e.key === 'cb_eventParticipants' && modId === 'events') {
-    if (typeof renderEvents === 'function') renderEvents(true);
+  // Events module: rebuild court checkboxes ONLY when the court list changes (cb_courts).
+  // Any other cb_* sync (bookings, participants, settings, etc.) was re-running full renderEvents()
+  // and replacing the checkbox DOM constantly — clicks never "stuck".
+  if (modId === 'events' && typeof renderEvents === 'function') {
+    if (key === 'cb_courts') {
+      renderEvents(false);
+    } else {
+      renderEvents(true);
+    }
     return;
   }
 

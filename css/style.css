@@ -1262,13 +1262,23 @@ footer {
 }
 
 /* Events module — court checkboxes must stay clickable (not replaced mid-click by re-renders) */
+.event-court-picker {
+  position: relative;
+  z-index: 1;
+}
+
 .event-court-picker .event-court-option {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   font-size: 0.82rem;
-  cursor: pointer;
   padding: 6px 0;
+}
+
+.event-court-picker .event-court-option label {
+  cursor: pointer;
+  flex: 1;
+  line-height: 1.35;
   user-select: none;
 }
 
@@ -1277,7 +1287,7 @@ footer {
   height: 1.15rem;
   min-width: 1.15rem;
   min-height: 1.15rem;
-  margin: 0;
+  margin: 2px 0 0 0;
   flex-shrink: 0;
   cursor: pointer;
   accent-color: var(--accent);
