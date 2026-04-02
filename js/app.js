@@ -338,8 +338,11 @@ function renderSlotGrid() {
     }
 
     const eventLabel = isEvent ? (isEvent.sport || 'Event') : 'Event';
-    const label = state === 'event' ? eventLabel : state === 'maintenance' ? 'Maintenance' : state === 'full' ? 'Full' : state === 'booked' ? 'Booked' : 'Available';
-    return `<div class="${cls}" onclick="${(state === 'available' || sel) ? `selectSlot('${s.start}','${s.end}')` : ''}" title="${s.start}–${s.end}: ${label}${maxP ? ` (${playerCount}/${maxP} players)` : ''}">
+    const label = state === 'event' ? eventLabel : state === 'maintenance' ? 'Maintenance' : state === 'full' ? 'Full' : state === 'booked' ? 'Waitlist' : 'Available';
+    const canClick = (state === 'available' || sel || state === 'booked');
+    const isWaitlist = (state === 'booked');
+
+    return `<div class="${cls}" onclick="${canClick ? `selectSlot('${s.start}','${s.end}', ${isWaitlist})` : ''}" title="${s.start}–${s.end}: ${label}${maxP ? ` (${playerCount}/${maxP} players)` : ''}">
       <div style="font-size:0.78rem;font-weight:600;font-family:var(--mono)">${s.start}</div>
       <div style="font-size:0.68rem;color:inherit;margin-top:2px">${label}</div>
       ${peakBadge}
@@ -358,10 +361,18 @@ function renderSlotGrid() {
   updateCostPreview();
 }
 
-function selectSlot(start, end) {
-  selection.start = start; selection.end = end;
-  renderSlotGrid(); updateCostPreview();
-}
+window.selectSlot = function (start, end, isWaitlist = false) {
+  selection.start = start;
+  selection.end = end;
+  selection.isWaitlist = isWaitlist;
+  
+  if (isWaitlist) {
+    document.getElementById('waitlistModal').style.display = 'flex';
+  } else {
+    renderSlotGrid();
+    updateCostPreview();
+  }
+};
 
 document.getElementById('bookDate').addEventListener('change', () => renderSlotGrid());
 
@@ -392,28 +403,48 @@ function proceedToAddOns() {
 /* ---- WAITLIST ---- */
 async function joinWaitlist() {
   const player = document.getElementById('waitlistPlayer').value.trim();
-  if (!player) return;
+  if (!player) return alert('Please enter your name.');
   const court = (Store.get('courts') || []).find(c => c.id === selection.courtId);
-  const session = Auth.get();
-  const email = session?.user?.email || (player.replace(/\s+/g, '').toLowerCase() + '@example.com');
-  
-  // Calculate priority based on verified membership
-  const verified = Store.get('verifiedMembers') || [];
-  const userVerifiedMem = verified.find(v => v.email === email);
-  const memberships = Store.get('memberships') || Store.DEFAULTS.memberships;
-  const mem = memberships.find(m => m.id === (userVerifiedMem?.membershipId || 'none')) || memberships[0];
-  const priority = mem.priority || 0;
+  const total = calculateTotal();
 
-  const res = await Store.addToWaitlist(selection.courtId, player, email, selection.date, selection.start, selection.end, mem.id, priority);
+  const newBooking = {
+    id: 'bk_w_' + Date.now(),
+    court_id: selection.courtId,
+    court_name: court?.name || 'Unknown',
+    sport: court?.sport || 'General',
+    player: player,
+    user_email: Auth.get()?.user?.email || 'user@example.com',
+    date: selection.date,
+    start_time: selection.start,
+    end_time: selection.end,
+    membership: 'none',
+    equipment: JSON.stringify([]),
+    players: 1,
+    cost: total,
+    status: 'waiting',
+    is_event: false
+  };
+
+  const res = await Store.addBooking(newBooking);
+  if (!res.success) return alert(res.error || 'Failed to join waitlist.');
+
+  alert('You have joined the waitlist!');
+  closeWaitlist();
   
-  if (res.success) {
-    closeWaitlist();
-    showAppAlert('warn', `${player} (Priority: ${priority}) added to waitlist for ${court.name}.`);
-  } else {
-    showAppAlert('error', `Failed to join waitlist: ${res.error}`);
-  }
+  // Reset selection
+  selection.courtId = null; 
+  selection.start = null; 
+  selection.end = null;
+  selection.isWaitlist = false;
+  
+  setStep(1);
+  renderUserPortal();
 }
-function closeWaitlist() { document.getElementById('waitlistModal').style.display = 'none'; document.getElementById('waitlistPlayer').value = ''; }
+
+function closeWaitlist() {
+  document.getElementById('waitlistModal').style.display = 'none';
+  document.getElementById('waitlistPlayer').value = '';
+}
 
 /* ---- STEP 3: ADD-ONS (fix 4 membership verify, fix 7 promo) ---- */
 function renderAddOns() {
@@ -563,7 +594,7 @@ async function confirmBooking() {
     membership: selection.membership,
     players: selection.players,
     cost: cost.total,
-    status: 'confirmed',
+    status: selection.isWaitlist ? 'waiting' : 'confirmed',
     equipment: selection.equipment,
     is_event: false,
     is_paid: false
