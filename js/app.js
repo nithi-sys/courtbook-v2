@@ -593,6 +593,7 @@ async function confirmBooking() {
     cost: cost.total,
     status: selection.isWaitlist ? 'waiting' : 'confirmed',
     equipment: selection.equipment,
+    bundle: selection.bundle,
     is_event: false,
     is_paid: false
   };
@@ -650,6 +651,27 @@ function renderBookingsTable() {
       <td><strong>${b.courtName}</strong></td><td>${b.sport}</td><td>${b.player}</td>
       <td>${b.membership !== 'none' ? `<span class="badge badge-accent">${b.membership}</span>` : '<span class="badge badge-neutral">None</span>'}</td>
       <td class="td-mono">${b.players || 1}</td>
+      <td style="font-size:0.75rem;max-width:120px;color:var(--muted)">
+        ${(function () {
+          // Get all possible equipment/bundles to find names
+          const court = (Store.get('courts') || []).find(c => c.id == b.court_id || c.id == b.courtId);
+          const equipData = Store.getEquipmentForSport(court?.sport || '');
+          const bundleData = Store.get('bundles') || [];
+          
+          let items = [];
+          if (b.equipment && Array.isArray(b.equipment)) {
+            b.equipment.forEach(id => {
+              const e = equipData.find(ex => ex.id === id);
+              if (e) items.push(e.name);
+            });
+          }
+          if (b.bundle) {
+            const bun = bundleData.find(bx => bx.id === b.bundle);
+            if (bun) items.push(`Bundle: ${bun.name}`);
+          }
+          return items.length ? items.join(', ') : '—';
+        })()}
+      </td>
       <td class="td-mono">${b.date}</td><td class="td-mono">${b.start}–${b.end}</td>
       <td class="td-mono">${Store.mins(b.end) - Store.mins(b.start)} min</td>
       <td class="td-amount">Rs.${b.cost}</td>
