@@ -401,11 +401,12 @@ function proceedToAddOns() {
 }
 
 /* ---- WAITLIST ---- */
-async function joinWaitlist() {
+window.joinWaitlist = async function () {
   const player = document.getElementById('waitlistPlayer').value.trim();
   if (!player) return alert('Please enter your name.');
   const court = (Store.get('courts') || []).find(c => c.id === selection.courtId);
-  const total = calculateTotal();
+  // Default to 1 hour if slots not yet finalized
+  const total = typeof calculateTotal === 'function' ? calculateTotal() : (court?.base_rate || 0);
 
   const newBooking = {
     id: 'bk_w_' + Date.now(),
@@ -429,7 +430,7 @@ async function joinWaitlist() {
   if (!res.success) return alert(res.error || 'Failed to join waitlist.');
 
   alert('You have joined the waitlist!');
-  closeWaitlist();
+  window.closeWaitlist();
   
   // Reset selection
   selection.courtId = null; 
@@ -439,12 +440,12 @@ async function joinWaitlist() {
   
   setStep(1);
   renderUserPortal();
-}
+};
 
-function closeWaitlist() {
+window.closeWaitlist = function () {
   document.getElementById('waitlistModal').style.display = 'none';
   document.getElementById('waitlistPlayer').value = '';
-}
+};
 
 /* ---- STEP 3: ADD-ONS (fix 4 membership verify, fix 7 promo) ---- */
 function renderAddOns() {
