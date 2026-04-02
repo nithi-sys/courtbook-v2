@@ -79,6 +79,7 @@ create table if not exists public.bookings (
   cost        integer default 0,
   status      text default 'confirmed',
   is_event    boolean default false,
+  is_paid     boolean default false,
   created_at  timestamptz default now()
 );
 

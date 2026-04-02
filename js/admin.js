@@ -916,8 +916,8 @@ function renderBookings() {
 
   document.getElementById('adminBookingCount').textContent = bookings.length + ' active';
   document.getElementById('adminBookingsBody').innerHTML = bookings.map(function (b) {
-    const isPastGrace = (b.date < tStr) || (b.date === tStr && nowMins > Store.mins(b.end) + 30);
-    const unpaidText = isPastGrace ? '<div style="color:#dc2626;font-size:0.6rem;font-weight:700;margin-top:2px">NOT PAID YET</div>' : '';
+    const statusBadge = b.is_paid ? '<span class="badge badge-available">PAID</span>' : '<span class="badge badge-neutral" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a">CONFIRMED</span>';
+    const unpaidText = !b.is_paid ? '<div style="color:#dc2626;font-size:0.6rem;font-weight:700;margin-top:2px">NOT PAID YET</div>' : '';
 
     return '<tr>' +
       '<td><strong>' + b.courtName + '</strong></td>' +
@@ -927,8 +927,10 @@ function renderBookings() {
       '<td class="td-mono">' + b.date + '</td>' +
       '<td class="td-mono">' + b.start + '–' + b.end + '</td>' +
       '<td class="td-amount">Rs.' + b.cost + '</td>' +
-      '<td><span class="badge badge-available">Confirmed</span>' + unpaidText + '</td>' +
-      '<td><button class="btn btn-sm btn-danger" onclick="adminCancelBooking(\'' + b.id + '\')">Cancel</button></td></tr>';
+      '<td>' + statusBadge + unpaidText + '</td>' +
+      '<td style="white-space:nowrap">' +
+      (!b.is_paid ? '<button class="btn btn-sm btn-secondary" onclick="adminMarkPaid(\'' + b.id + '\')" style="background:#059669;color:white;margin-right:4px">Mark Paid</button> ' : '') +
+      '<button class="btn btn-sm btn-danger" onclick="adminCancelBooking(\'' + b.id + '\')">Cancel</button></td></tr>';
   }).join('') || '<tr><td colspan="9"><div class="empty-state">No active bookings.</div></td></tr>';
 
   document.getElementById('waitlistCount').textContent = waitlist.length + ' waiting';
@@ -986,6 +988,32 @@ async function removeWaitlist(id) {
   }
   adminAlert('Removed from waitlist.');
   renderBookings();
+}
+
+async function adminMarkPaid(id) {
+  const bookings = Store.get('bookings') || [];
+  const b = bookings.find(x => String(x.id) === String(id));
+  if (!b) return;
+
+  // 1. Optimistic UI update: change locally first
+  const originalStatus = b.is_paid;
+  b.is_paid = true;
+  Store.setLocal('bookings', bookings);
+  renderBookings();
+  
+  // 2. Perform DB update in background
+  const { error } = await supabaseClient.from('bookings').update({ is_paid: true }).eq('id', id);
+  
+  if (error) {
+    console.error('Mark paid error:', error);
+    // Rollback on error
+    b.is_paid = originalStatus;
+    Store.setLocal('bookings', bookings);
+    renderBookings();
+    return adminAlert('Failed to update payment status: ' + (error.message || 'Network Error'), 'error');
+  }
+
+  adminAlert('Booking for ' + b.player + ' successfully marked as PAID.');
 }
 
 /* ======== ANALYTICS — fix 5 ======== */

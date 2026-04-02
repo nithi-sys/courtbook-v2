@@ -565,7 +565,8 @@ async function confirmBooking() {
     cost: cost.total,
     status: 'confirmed',
     equipment: selection.equipment,
-    is_event: false
+    is_event: false,
+    is_paid: false
   };
 
   // 3. Save to Supabase
@@ -615,7 +616,7 @@ function renderBookingsTable() {
 
   tbody.innerHTML = bookings.map(b => {
     const isPastGrace = (b.date < tStr) || (b.date === tStr && nowMins > Store.mins(b.end) + 30);
-    const unpaidLabel = isPastGrace ? `<div style="color:#dc2626;font-size:0.65rem;font-weight:700;margin-top:2px;text-align:center">NOT PAID YET</div>` : '';
+    const unpaidLabel = !b.is_paid ? `<div style="color:#dc2626;font-size:0.65rem;font-weight:700;margin-top:2px;text-align:center">NOT PAID YET</div>` : `<div style="color:#059669;font-size:0.65rem;font-weight:700;margin-top:2px;text-align:center">PAID</div>`;
 
     return `<tr>
       <td><strong>${b.courtName}</strong></td><td>${b.sport}</td><td>${b.player}</td>
