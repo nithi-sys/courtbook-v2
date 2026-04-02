@@ -579,6 +579,47 @@ const Store = (() => {
     setLocal('bookings', next);
   }
 
+  /** Insert a booking row (used by Join Waitlist and similar). */
+  async function addBooking(newBooking) {
+    if (!window.supabaseClient) return { success: false, error: 'Database not available.' };
+    let equipment = newBooking.equipment;
+    if (typeof equipment === 'string') {
+      try {
+        equipment = JSON.parse(equipment || '[]');
+      } catch (e) {
+        equipment = [];
+      }
+    }
+    if (!Array.isArray(equipment)) equipment = [];
+
+    const row = {
+      id: newBooking.id,
+      court_id: newBooking.court_id,
+      court_name: newBooking.court_name,
+      sport: newBooking.sport || 'General',
+      player: newBooking.player,
+      user_email: newBooking.user_email,
+      date: newBooking.date,
+      start_time: newBooking.start_time,
+      end_time: newBooking.end_time,
+      membership: newBooking.membership || 'none',
+      players: newBooking.players != null ? newBooking.players : 1,
+      cost: newBooking.cost != null ? newBooking.cost : 0,
+      status: newBooking.status || 'confirmed',
+      equipment,
+      is_event: !!newBooking.is_event,
+      is_paid: !!newBooking.is_paid
+    };
+
+    const { error } = await supabaseClient.from('bookings').insert(row);
+    if (error) {
+      console.error('addBooking error:', error);
+      return { success: false, error: error.message || 'Insert failed.' };
+    }
+    applyBookingInsert(row);
+    return { success: true };
+  }
+
   // Local/Transient Setters (for waitlist, notifications, etc)
   function setLocal(key, val) {
     // Always update in-memory cache immediately to ensure same-tab consistency
@@ -1128,7 +1169,7 @@ const Store = (() => {
   }
 
   return {
-    init, get, updateSetting, setLocal, applyBookingInsert, refreshEventParticipantsFromDb,
+    init, get, updateSetting, setLocal, applyBookingInsert, addBooking, refreshEventParticipantsFromDb,
     isJoinedParticipant: isPersistedParticipant,
     calcCost, checkConflict, getSlotPlayerCount,
     getPendingLock, acquireLock, releaseLock,

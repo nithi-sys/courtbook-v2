@@ -920,13 +920,16 @@ function renderBookings() {
 
   document.getElementById('waitlistCount').textContent = waitlist.length + ' waiting';
   document.getElementById('waitlistBody').innerHTML = waitlist.map(function (w) {
+    const wid = String(w.id).replace(/\\/g, '\\\\').replace(/'/g, '\\\'');
     return '<tr>' +
-      '<td><strong>' + w.courtName + '</strong></td>' +
-      '<td>' + w.player + '</td>' +
-      '<td class="td-mono">' + w.date + '</td>' +
-      '<td class="td-mono">' + w.start + '–' + w.end + '</td>' +
-      '<td><span class=\"badge badge-accent\">Priority ' + (w.priority || 0) + '</span></td>' +
-      '<td><button class="btn btn-sm btn-danger" onclick="removeWaitlist(\'' + w.id + '\')">Remove</button></td></tr>';
+      '<td><strong>' + adminEscapeHtml(w.courtName) + '</strong></td>' +
+      '<td>' + adminEscapeHtml(w.player) + '</td>' +
+      '<td class="td-mono">' + adminEscapeHtml(w.date) + '</td>' +
+      '<td class="td-mono">' + adminEscapeHtml(w.start) + '–' + adminEscapeHtml(w.end) + '</td>' +
+      '<td><span class="badge badge-accent" style="cursor:pointer;text-decoration:underline" onclick="adminConfirmWaitlist(\'' + wid + '\')" title="Click to confirm — moves to Active Bookings">WAITING</span></td>' +
+      '<td style="white-space:nowrap">' +
+      '<button class="btn btn-sm btn-secondary" onclick="adminConfirmWaitlist(\'' + wid + '\')" style="margin-right:4px">Confirm</button>' +
+      '<button class="btn btn-sm btn-danger" onclick="removeWaitlist(\'' + wid + '\')">Remove</button></td></tr>';
   }).join('') || '<tr><td colspan="6"><div class="empty-state">Waitlist is empty.</div></td></tr>';
 }
 
@@ -964,11 +967,55 @@ async function adminCancelBooking(id) {
   renderBookings();
 }
 
+async function adminConfirmWaitlist(id) {
+  const bookings = Store.get('bookings') || [];
+  const w = bookings.find(function (x) { return String(x.id) === String(id); });
+  if (!w || w.status !== 'waiting') return;
+
+  var originalStatus = w.status;
+  w.status = 'confirmed';
+  Store.setLocal('bookings', bookings);
+  renderBookings();
+
+  const { error } = await supabaseClient.from('bookings').update({ status: 'confirmed' }).eq('id', id);
+
+  if (error) {
+    console.error('Confirm waitlist error:', error);
+    w.status = originalStatus;
+    Store.setLocal('bookings', bookings);
+    renderBookings();
+    return adminAlert('Failed to update status: ' + (error.message || 'Unknown error'), 'error');
+  }
+
+  adminAlert('Status updated — entry is now under Active Bookings as confirmed.', 'success');
+}
+
 async function removeWaitlist(id) {
   if (!confirm("Remove this entry from waitlist?")) return;
-  const { error } = await supabaseClient.from('waitlist').delete().eq('id', id);
-  if (error) {
-    console.error('Waitlist delete error:', error);
+
+  const bookings = Store.get('bookings') || [];
+  const row = bookings.find(function (x) { return String(x.id) === String(id); });
+
+  if (row && row.status === 'waiting') {
+    var remaining = bookings.filter(function (x) { return String(x.id) !== String(id); });
+    Store.setLocal('bookings', remaining);
+    renderBookings();
+
+    const { error } = await supabaseClient.from('bookings').delete().eq('id', id).eq('status', 'waiting');
+    if (error) {
+      console.error('Waitlist booking delete error:', error);
+      Store.setLocal('bookings', bookings);
+      renderBookings();
+      return adminAlert('Failed to remove from waitlist.', 'error');
+    }
+    adminAlert('Removed from waitlist.');
+    renderBookings();
+    return;
+  }
+
+  const { error: wlErr } = await supabaseClient.from('waitlist').delete().eq('id', id);
+  if (wlErr) {
+    console.error('Waitlist delete error:', wlErr);
     return adminAlert('Failed to remove from waitlist.', 'error');
   }
   adminAlert('Removed from waitlist.');

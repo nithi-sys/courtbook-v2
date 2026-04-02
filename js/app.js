@@ -22,7 +22,7 @@ window.joinWaitlist = async function () {
     start_time: selection.start,
     end_time: selection.end,
     membership: 'none',
-    equipment: JSON.stringify([]),
+    equipment: [],
     players: 1,
     cost: total,
     status: 'waiting',
