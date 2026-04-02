@@ -885,15 +885,20 @@ async function deleteEvent(i) {
 }
 /* ======== BOOKINGS & WAITLIST ======== */
 function renderBookings() {
-  const bookings = (Store.get('bookings') || []).filter(function (b) {
-    return b.status !== 'cancelled' && !b.isEvent;
+  const allBookings = Store.get('bookings') || [];
+  
+  // 1. Regular active bookings (not cancelled, not events, not waiting)
+  const bookings = allBookings.filter(function (b) {
+    return b.status !== 'cancelled' && b.status !== 'waiting' && !b.isEvent;
   });
-  const waitlist = Store.get('waitlist') || [];
-  const now = new Date();
-  const tStr = now.toISOString().split('T')[0];
-  const nowMins = now.getHours() * 60 + now.getMinutes();
+
+  // 2. Waitlist entries (status 'waiting')
+  const waitlist = allBookings.filter(function (b) {
+    return b.status === 'waiting';
+  });
 
   document.getElementById('adminBookingCount').textContent = bookings.length + ' active';
+  document.getElementById('waitlistCount').textContent = waitlist.length + ' waiting';
   document.getElementById('adminBookingsBody').innerHTML = bookings.map(function (b) {
     const isPaid = (b.status === 'paid');
     const statusBadge = isPaid ? '<span class="badge badge-available">PAID</span>' : '<span class="badge badge-neutral" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a">CONFIRMED</span>';

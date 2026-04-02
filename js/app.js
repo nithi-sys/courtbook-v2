@@ -2,7 +2,49 @@
 const today = new Date();
 const todayStr = today.toISOString().split('T')[0];
 let step = 1;
-let selection = { courtId: null, date: todayStr, start: '', end: '', membership: 'none', equipment: [], bundle: null, players: 1, promoCode: '' };
+let selection = { courtId: null, date: todayStr, start: '', end: '', membership: 'none', equipment: [], bundle: null, players: 1, promoCode: '', isWaitlist: false };
+
+/* ---- WAITLIST (GLOABL) ---- */
+window.joinWaitlist = async function () {
+  const player = document.getElementById('waitlistPlayer').value.trim();
+  if (!player) return alert('Please enter your name.');
+  const court = (Store.get('courts') || []).find(c => c.id === selection.courtId);
+  const total = typeof calculateTotal === 'function' ? calculateTotal() : (court?.base_rate || 0);
+
+  const newBooking = {
+    id: 'bk_w_' + Date.now(),
+    court_id: selection.courtId,
+    court_name: court?.name || 'Unknown',
+    sport: court?.sport || 'General',
+    player: player,
+    user_email: Auth.get()?.user?.email || 'user@example.com',
+    date: selection.date,
+    start_time: selection.start,
+    end_time: selection.end,
+    membership: 'none',
+    equipment: JSON.stringify([]),
+    players: 1,
+    cost: total,
+    status: 'waiting',
+    is_event: false,
+    is_paid: false
+  };
+
+  const res = await Store.addBooking(newBooking);
+  if (!res.success) return alert(res.error || 'Failed to join waitlist.');
+
+  alert('You have joined the waitlist!');
+  window.closeWaitlist();
+  
+  selection.courtId = null; selection.start = null; selection.end = null; selection.isWaitlist = false;
+  setStep(1);
+  renderUserPortal();
+};
+
+window.closeWaitlist = function () {
+  document.getElementById('waitlistModal').style.display = 'none';
+  if (document.getElementById('waitlistPlayer')) document.getElementById('waitlistPlayer').value = '';
+};
 
 /** Debounce — storage/realtime was re-rendering the events grid every few seconds and nuking the Participation button mid-click. */
 let _renderEventsListTimer = null;
@@ -400,52 +442,6 @@ function proceedToAddOns() {
   setStep(3);
 }
 
-/* ---- WAITLIST ---- */
-window.joinWaitlist = async function () {
-  const player = document.getElementById('waitlistPlayer').value.trim();
-  if (!player) return alert('Please enter your name.');
-  const court = (Store.get('courts') || []).find(c => c.id === selection.courtId);
-  // Default to 1 hour if slots not yet finalized
-  const total = typeof calculateTotal === 'function' ? calculateTotal() : (court?.base_rate || 0);
-
-  const newBooking = {
-    id: 'bk_w_' + Date.now(),
-    court_id: selection.courtId,
-    court_name: court?.name || 'Unknown',
-    sport: court?.sport || 'General',
-    player: player,
-    user_email: Auth.get()?.user?.email || 'user@example.com',
-    date: selection.date,
-    start_time: selection.start,
-    end_time: selection.end,
-    membership: 'none',
-    equipment: JSON.stringify([]),
-    players: 1,
-    cost: total,
-    status: 'waiting',
-    is_event: false
-  };
-
-  const res = await Store.addBooking(newBooking);
-  if (!res.success) return alert(res.error || 'Failed to join waitlist.');
-
-  alert('You have joined the waitlist!');
-  window.closeWaitlist();
-  
-  // Reset selection
-  selection.courtId = null; 
-  selection.start = null; 
-  selection.end = null;
-  selection.isWaitlist = false;
-  
-  setStep(1);
-  renderUserPortal();
-};
-
-window.closeWaitlist = function () {
-  document.getElementById('waitlistModal').style.display = 'none';
-  document.getElementById('waitlistPlayer').value = '';
-};
 
 /* ---- STEP 3: ADD-ONS (fix 4 membership verify, fix 7 promo) ---- */
 function renderAddOns() {
