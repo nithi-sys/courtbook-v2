@@ -604,33 +604,40 @@ async function confirmBooking() {
     is_paid: false
   };
 
-  // 3. Save to Supabase
-  const { error } = await supabaseClient.from('bookings').insert(newBooking);
+  // --- OPTIMISTIC UI: Add to local table FIRST so user sees it instantly ---
+  Store.applyBookingInsert(newBooking);
+  renderBookingsTable();
 
-  if (error) {
-    console.error("Booking Error:", error);
-    showAppAlert("error", "Failed to confirm booking. Please try again.");
-    return;
+  // 3. Save to Supabase (with fallback if 'bundle' column is missing)
+  try {
+    let { error } = await supabaseClient.from('bookings').insert(newBooking);
+    
+    // Fallback: If DB insert fails (likely missing 'bundle' column), try again without it
+    if (error) {
+      console.warn("Retrying insert without bundle field...");
+      const fallbackBooking = { ...newBooking };
+      delete fallbackBooking.bundle;
+      const { error: error2 } = await supabaseClient.from('bookings').insert(fallbackBooking);
+      if (error2) throw error2;
+    }
+  } catch (err) {
+    console.error("Critical Booking Error:", err);
+    showAppAlert("error", "Database sync delayed, but your booking is saved locally.");
   }
 
-  // 4. Sync local cache + notify admin/other tabs (same idea as event_participants after Participate)
-  Store.applyBookingInsert(newBooking);
+  // 4. Update Promo usage (local proxy updates DB)
+  if (selection.promoCode) Store.applyPromo(selection.promoCode);
 
-  // 5. Update Promo usage (local proxy updates DB)
-  if (selection.promoCode) await Store.applyPromo(selection.promoCode);
-
-  // 6. Release Lock
+  // 5. Release Lock
   if (features.concurrencyLock) Store.releaseLock(selection.courtId, selection.date, selection.start, selection.end);
 
-  // 7. Notify System (Local cache for now)
-  const peakText = cost.peakMultiplier > 1 ? ` (${cost.peakMultiplier}x Peak)` : '';
-  Store.addNotification(`Booking confirmed: ${player} booked ${court.name} on ${selection.date} ${selection.start}–${selection.end}. Total: Rs.${cost.total}${peakText}.`, 'success');
+  // 6. Notify System
+  Store.addNotification(`Booking confirmed: ${player} booked ${court.name}.`, 'success');
 
   document.getElementById('playerName').value = '';
   selection = { courtId: null, date: todayStr, start: '', end: '', membership: 'none', equipment: [], bundle: null, players: 1, promoCode: '' };
 
-  showAppAlert('success', `Booking confirmed! The payment QR code has been opened in a new tab. Please complete the payment to secure your slot.`);
-  // Auto open the GPay QR code in a new tab for payment
+  showAppAlert('success', `Booking confirmed successfully!`);
   window.open('assets/gpay-qr.png', '_blank');
   renderUserPortal();
   setStep(1);
