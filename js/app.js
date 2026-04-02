@@ -11,8 +11,8 @@ window.joinWaitlist = async function () {
   const court = (Store.get('courts') || []).find(c => c.id === selection.courtId);
   const total = typeof calculateTotal === 'function' ? calculateTotal() : (court?.base_rate || 0);
 
-  const newBooking = {
-    id: 'bk_w_' + Date.now(),
+  const newWaitlistEntry = {
+    id: 'w_' + Date.now(),
     court_id: selection.courtId,
     court_name: court?.name || 'Unknown',
     sport: court?.sport || 'General',
@@ -21,19 +21,22 @@ window.joinWaitlist = async function () {
     date: selection.date,
     start_time: selection.start,
     end_time: selection.end,
-    membership: 'none',
-    equipment: [],
-    players: 1,
     cost: total,
-    status: 'waiting',
-    is_event: false,
-    is_paid: false
+    created_at: new Date().toISOString()
   };
 
-  const res = await Store.addBooking(newBooking);
-  if (!res.success) return alert(res.error || 'Failed to join waitlist.');
+  // 1. Save to localStorage
+  let waitlist = JSON.parse(localStorage.getItem('cb_waitlist') || '[]');
+  waitlist.push(newWaitlistEntry);
+  localStorage.setItem('cb_waitlist', JSON.stringify(waitlist));
+  
+  // 2. Update Store cache so other functions can see it
+  Store.setLocal('waitlist', waitlist);
 
-  alert('You have joined the waitlist!');
+  // 3. Show output as requested
+  console.table(waitlist);
+  alert(`Successfully joined waitlist! (Stored in LocalStorage)\n\nName: ${player}\nCourt: ${newWaitlistEntry.court_name}\nTime: ${newWaitlistEntry.start_time}\n\nTotal Waitlist Size: ${waitlist.length}`);
+  
   window.closeWaitlist();
   
   selection.courtId = null; selection.start = null; selection.end = null; selection.isWaitlist = false;
@@ -379,8 +382,11 @@ function renderSlotGrid() {
       if (peak) peakBadge = `<div style="margin-top:4px"><span class="peak-badge">${peak.multiplier}x Rate</span></div>`;
     }
 
+    const waitlist = Store.get('waitlist') || [];
+    const waitlistCount = waitlist.filter(w => (w.courtId == selection.courtId || w.court_id == selection.courtId) && w.date === date && (w.start === s.start || w.start_time === s.start)).length;
+
     const eventLabel = isEvent ? (isEvent.sport || 'Event') : 'Event';
-    const label = state === 'event' ? eventLabel : state === 'maintenance' ? 'Maintenance' : state === 'full' ? 'Full' : state === 'booked' ? 'Waitlist' : 'Available';
+    const label = state === 'event' ? eventLabel : state === 'maintenance' ? 'Maintenance' : state === 'full' ? 'Full' : state === 'booked' ? (waitlistCount > 0 ? `Waitlist (${waitlistCount})` : 'Waitlist') : 'Available';
     const canClick = (state === 'available' || sel || state === 'booked');
     const isWaitlist = (state === 'booked');
 
