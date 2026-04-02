@@ -1,7 +1,7 @@
 /* js/auth.js — Supabase Auth Utility (Using Official SDK) */
 
-const SUPABASE_URL = 'https://uazkgwkzgerlsbokyxvu.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_Cy2YAiyVjTCpm4E5Jh6VDg_VDBUamHV';
+const SUPABASE_URL = 'https://xajktxcxladnkhnllrwm.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhhamt0eGN4bGFkbmtobmxscndtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwMTE4MjMsImV4cCI6MjA4NzU4NzgyM30.qa0vZf6MT8bWsZ85K9wzSqa-YSpzT1lp0zqn-mv7Il8';
 
 // Initialize the global Supabase client
 window.supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
