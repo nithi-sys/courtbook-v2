@@ -137,6 +137,12 @@ function setStep(n) {
   if (n === 4) renderConfirm();
 }
 
+function renderUserPortal() {
+  renderCourts();
+  renderEventsList();
+  renderBookingsTable();
+}
+
 /* ---- COURTS (fix 1) ---- */
 function renderCourts() {
   const courts = (Store.get('courts') || []).filter(c => c.active); // only active courts shown
@@ -626,6 +632,7 @@ async function confirmBooking() {
   showAppAlert('success', `Booking confirmed! The payment QR code has been opened in a new tab. Please complete the payment to secure your slot.`);
   // Auto open the GPay QR code in a new tab for payment
   window.open('assets/gpay-qr.png', '_blank');
+  renderUserPortal();
   setStep(1);
 }
 
