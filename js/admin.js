@@ -627,46 +627,25 @@ function renderEvents(skipCourtPicker) {
   }
 
   document.getElementById('eventTableBody').innerHTML = events.map(function (e, i) {
+    const participants = Store.get('eventParticipants') || [];
+    const eventParticipants = participants.filter(p => {
+      const pId = String(p.eventId || p.event_id || '').trim().toLowerCase();
+      const eId = String(e.id || '').trim().toLowerCase();
+      if (pId === eId && pId !== '') return true;
+      const pName = String(p.eventName || '').trim().toLowerCase();
+      const eName = String(e.name || '').trim().toLowerCase();
+      return pName === eName && p.date === e.date;
+    });
+
+    const participantList = eventParticipants.length 
+      ? eventParticipants.map(p => p.player).join(', ') 
+      : '<span style="color:var(--muted)">None yet</span>';
+
+    var courts = Store.get('courts') || [];
     var courtNames = (e.courtIds || []).map(function (cid) {
       var c = courts.find(function (x) { return Number(x.id) === Number(cid); });
       return c ? c.name : ('Court #' + cid);
     }).join(', ') || '—';
-
-    const eventParticipants = allParticipants.filter(function (p) {
-      const pRef = String(p.eventRef || '').toLowerCase().trim();
-      const eId = String(e.id || '').toLowerCase().trim();
-      if (pRef && pRef === eId) return true;
-      const pKey = String(p.eventKey || '').trim();
-      if (pKey && pKey === eventKey(e)) return true;
-      const pName = String(p.eventName || '').trim();
-      const pDate = String(p.eventDate || '').trim();
-      const pStart = String(p.eventStart || '').trim();
-      const pEnd = String(p.eventEnd || '').trim();
-      if (pName === String(e.name || '').trim() && pDate === String(e.date || '').trim() && pStart === String(e.start || '').trim() && pEnd === String(e.end || '').trim()) {
-        return true;
-      }
-      // 1. Direct ID match (most reliable)
-      const pId = String(p.eventId || p.event_id || '').toLowerCase().trim();
-      if (pId === eId) return true;
-
-      // 2. Fuzzy match for Fallback (ev_...) vs Formal IDs (numeric)
-      // This happens if one tab sees the "formal" DB event and another sees the "reconstructed" booking
-      const isRecon = eId.startsWith('ev_');
-      const pIdIsNumeric = !isNaN(Number(pId)) && pId !== '';
-      
-      if (isRecon || pIdIsNumeric) {
-        // If names and dates match exactly, we treat them as the same event
-        const pEvent = (Store.get('events') || []).find(ev => String(ev.id) === pId);
-        if (pEvent) {
-          return pEvent.name === e.name && pEvent.date === e.date;
-        }
-      }
-      return false;
-    });
-
-    var pListHtml = eventParticipants.length
-      ? '<span style="font-weight:600;color:var(--accent);cursor:pointer;text-decoration:underline" onclick="openParticipantModal(' + i + ')">' + eventParticipants.length + ' Joined</span>'
-      : '<span style="color:var(--muted)">None yet</span>';
 
     return '<tr>' +
       '<td><strong>' + e.name + '</strong></td>' +
@@ -674,7 +653,7 @@ function renderEvents(skipCourtPicker) {
       '<td class="td-mono">' + e.date + '</td>' +
       '<td class="td-mono">' + e.start + '–' + e.end + '</td>' +
       '<td><span class="badge badge-accent">' + e.type + '</span></td>' +
-      '<td>' + pListHtml + '</td>' +
+      '<td style="font-size:0.75rem">' + participantList + '</td>' +
       '<td><button class="btn btn-sm btn-danger" onclick="deleteEvent(' + i + ')">Remove</button></td>' +
       '</tr>';
   }).join('') || '<tr><td colspan="7"><div class="empty-state">No events scheduled.</div></td></tr>';
@@ -1001,7 +980,7 @@ async function adminMarkPaid(id) {
   b.status = 'paid';
   Store.setLocal('bookings', bookings);
   renderBookings();
-  
+
   // 2. Perform DB update in background (using existing status column)
   const { error } = await supabaseClient.from('bookings').update({ status: 'paid' }).eq('id', id);
   
