@@ -117,7 +117,7 @@ function renderCourts() {
     const now = today.getHours() * 60 + today.getMinutes();
     let busyReason = false;
     bookings.forEach(b => {
-      if (b.courtId == courtId && b.date === todayStr && b.status !== 'cancelled' && Store.mins(b.start) <= now && now < Store.mins(b.end)) {
+      if (b.courtId == courtId && b.date === todayStr && b.status !== 'cancelled' && b.status !== 'waiting' && Store.mins(b.start) <= now && now < Store.mins(b.end)) {
         busyReason = b.isEvent ? (b.sport || 'Event') : true;
       }
     });
@@ -275,7 +275,7 @@ async function joinEvent(eventId) {
 
 function isCurrentlyBusy(courtId, bookings) {
   const now = today.getHours() * 60 + today.getMinutes();
-  return bookings.some(b => b.courtId == courtId && b.date === todayStr && b.status !== 'cancelled' && Store.mins(b.start) <= now && now < Store.mins(b.end));
+  return bookings.some(b => b.courtId == courtId && b.date === todayStr && b.status !== 'cancelled' && b.status !== 'waiting' && Store.mins(b.start) <= now && now < Store.mins(b.end));
 }
 
 function selectCourt(id) { selection.courtId = id; setStep(2); }
@@ -634,6 +634,38 @@ function renderBookingsTable() {
       </td>
     </tr>`;
   }).join('');
+}
+
+async function userCancelBooking(id) {
+  if (!confirm('Are you sure you want to cancel?')) return;
+  const bookings = Store.get('bookings') || [];
+  const b = bookings.find(x => String(x.id) === String(id));
+  if (!b) return;
+
+  const { error } = await supabaseClient.from('bookings').update({ status: 'cancelled' }).eq('id', id);
+  if (error) return alert('Failed to cancel.');
+
+  b.status = 'cancelled';
+
+  // WAITLIST PROMOTION
+  const waitlisted = bookings.filter(x => 
+    x.status === 'waiting' && 
+    x.courtId == b.courtId && 
+    x.date === b.date && 
+    x.start === b.start
+  ).sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+
+  if (waitlisted.length > 0) {
+    const nextUser = waitlisted[0];
+    const { error: promoError } = await supabaseClient.from('bookings').update({ status: 'confirmed' }).eq('id', nextUser.id);
+    if (!promoError) {
+      nextUser.status = 'confirmed';
+      console.log('Promoted waitlist user:', nextUser.player);
+    }
+  }
+
+  Store.setLocal('bookings', bookings);
+  renderUserPortal();
 }
 
 async function cancelBooking(id) {
