@@ -615,8 +615,8 @@ function renderBookingsTable() {
   const nowMins = now.getHours() * 60 + now.getMinutes();
 
   tbody.innerHTML = bookings.map(b => {
-    const isPastGrace = (b.date < tStr) || (b.date === tStr && nowMins > Store.mins(b.end) + 30);
-    const unpaidLabel = !b.is_paid ? `<div style="color:#dc2626;font-size:0.65rem;font-weight:700;margin-top:2px;text-align:center">NOT PAID YET</div>` : `<div style="color:#059669;font-size:0.65rem;font-weight:700;margin-top:2px;text-align:center">PAID</div>`;
+    const isPaid = (b.status === 'paid');
+    const unpaidLabel = !isPaid ? `<div style="color:#dc2626;font-size:0.65rem;font-weight:700;margin-top:2px;text-align:center">NOT PAID YET</div>` : `<div style="color:#059669;font-size:0.65rem;font-weight:700;margin-top:2px;text-align:center">PAID</div>`;
 
     return `<tr>
       <td><strong>${b.courtName}</strong></td><td>${b.sport}</td><td>${b.player}</td>
