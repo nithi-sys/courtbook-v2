@@ -540,7 +540,20 @@ const Store = (() => {
     if (key === 'verifiedMembers') return cache.settings.verified_members;
 
     // Transients
-    if (key === 'waitlist') return cache.waitlist;
+    if (key === 'waitlist') {
+      const dbWait = cache.waitlist || [];
+      let localWait = [];
+      try { 
+        localWait = (JSON.parse(localStorage.getItem('cb_waitlist') || '[]')).map(w => ({
+             ...w,
+             courtId: w.court_id || w.courtId,
+             courtName: w.court_name || w.courtName,
+             start: w.start_time || w.start,
+             end: w.end_time || w.end
+        }));
+      } catch (e) { localWait = []; }
+      return [...dbWait, ...localWait];
+    }
     if (key === 'pendingLocks') return localState.pendingLocks;
 
     return null;

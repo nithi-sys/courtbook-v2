@@ -892,10 +892,11 @@ function renderBookings() {
     return b.status !== 'cancelled' && b.status !== 'waiting' && !b.isEvent;
   });
 
-  // 2. Waitlist entries (status 'waiting')
-  const waitlist = allBookings.filter(function (b) {
-    return b.status === 'waiting';
-  });
+  // 2. Waitlist entries (merge DB table + localStorage + status 'waiting' from bookings)
+  const waitlist = [
+    ...allBookings.filter(b => b.status === 'waiting'),
+    ...(Store.get('waitlist') || [])
+  ];
 
   document.getElementById('adminBookingCount').textContent = bookings.length + ' active';
   document.getElementById('waitlistCount').textContent = waitlist.length + ' waiting';
@@ -969,9 +970,51 @@ async function adminCancelBooking(id) {
 
 async function adminConfirmWaitlist(id) {
   const bookings = Store.get('bookings') || [];
-  const w = bookings.find(function (x) { return String(x.id) === String(id); });
-  if (!w || w.status !== 'waiting') return;
+  let w = bookings.find(function (x) { return String(x.id) === String(id); });
+  let isLocal = false;
 
+  if (!w || w.status !== 'waiting') {
+    // Check local waitlist
+    const localWaitlist = JSON.parse(localStorage.getItem('cb_waitlist') || '[]');
+    w = localWaitlist.find(x => String(x.id) === String(id));
+    if (w) isLocal = true;
+  }
+
+  if (!w) return;
+
+  if (isLocal) {
+    // Move from local waitlist to DB bookings
+    const newBooking = {
+      id: 'bk_' + Date.now(),
+      court_id: w.court_id,
+      court_name: w.court_name,
+      sport: w.sport,
+      player: w.player,
+      user_email: w.user_email,
+      date: w.date,
+      start_time: w.start_time || w.start,
+      end_time: w.end_time || w.end,
+      cost: w.cost || 0,
+      status: 'confirmed',
+      is_event: false
+    };
+
+    const { error } = await supabaseClient.from('bookings').insert(newBooking);
+    if (!error) {
+      // Remove from local waitlist
+      const localWaitlist = (JSON.parse(localStorage.getItem('cb_waitlist') || '[]')).filter(x => String(x.id) !== String(id));
+      localStorage.setItem('cb_waitlist', JSON.stringify(localWaitlist));
+      Store.setLocal('waitlist', localWaitlist);
+      Store.applyBookingInsert(newBooking);
+      adminAlert('Local waitlist entry promoted to Active Booking!', 'success');
+      renderBookings();
+    } else {
+      adminAlert('Failed to promote local waitlist: ' + error.message, 'error');
+    }
+    return;
+  }
+
+  // Handle DB waiting booking
   var originalStatus = w.status;
   w.status = 'confirmed';
   Store.setLocal('bookings', bookings);
@@ -997,7 +1040,7 @@ async function removeWaitlist(id) {
   const row = bookings.find(function (x) { return String(x.id) === String(id); });
 
   if (row && row.status === 'waiting') {
-    var remaining = bookings.filter(function (x) { return String(x.id) !== String(id); });
+    var remaining = (Store.get('bookings') || []).filter(function (x) { return String(x.id) !== String(id); });
     Store.setLocal('bookings', remaining);
     renderBookings();
 
@@ -1009,6 +1052,18 @@ async function removeWaitlist(id) {
       return adminAlert('Failed to remove from waitlist.', 'error');
     }
     adminAlert('Removed from waitlist.');
+    renderBookings();
+    return;
+  }
+
+  // Check local waitlist
+  const localWaitlist = JSON.parse(localStorage.getItem('cb_waitlist') || '[]');
+  const localEntry = localWaitlist.find(x => String(x.id) === String(id));
+  if (localEntry) {
+    const nextLocal = localWaitlist.filter(x => String(x.id) !== String(id));
+    localStorage.setItem('cb_waitlist', JSON.stringify(nextLocal));
+    Store.setLocal('waitlist', nextLocal);
+    adminAlert('Local waitlist entry removed.');
     renderBookings();
     return;
   }
