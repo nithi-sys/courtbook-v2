@@ -1318,7 +1318,22 @@ var renders = {
   primeParticipantNotifier();
 
   // Real-time synchronization is handled via Store.js (BroadcastChannel and Storage events).
-  // No aggressive polling is needed anymore.
+  // Background polling for waitlist specifically (since it doesn't have its own realtime listener in Store yet)
+  setInterval(async function () {
+    const prevLen = (Store.get('waitlist') || []).length;
+    // We don't have a specific refreshWaitlist function so we use init() silently or fetch waitlist manually
+    // but the most robust way is to just call Store.init() to get all shared data
+    await Store.init(); 
+    const currentLen = (Store.get('waitlist') || []).length;
+    
+    // Only re-render if something changed or we are on the bookings module
+    const activeModule = document.querySelector('.sidebar-item.active');
+    if (activeModule && activeModule.getAttribute('data-mod') === 'bookings') {
+       renderBookings();
+    } else if (activeModule && activeModule.getAttribute('data-mod') === 'userportal') {
+       renderUserPortal();
+    }
+  }, 3000);
 
   // Notification fallback poller (admin popup + notification log).
   setInterval(function () {

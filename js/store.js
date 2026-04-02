@@ -706,11 +706,23 @@ const Store = (() => {
       priority
     };
 
-    const { data, error } = await supabaseClient.from('waitlist').insert(newWait).select().single();
+    const { data: inserted, error } = await supabaseClient.from('waitlist').insert(newWait).select().single();
     if (error) {
       console.error('Waitlist add error:', error);
       return { success: false, error: error.message };
     }
+
+    // Refresh local cache with the newly inserted row (which has a real DB ID)
+    const currentWait = get('waitlist') || [];
+    currentWait.push({
+      ...inserted,
+      courtId: inserted.court_id,
+      courtName: inserted.court_name,
+      start: inserted.start_time,
+      end: inserted.end_time
+    });
+    setLocal('waitlist', currentWait);
+
     return { success: true };
   }
 
@@ -1167,6 +1179,7 @@ const Store = (() => {
         else if (k === 'bookings') cache.bookings = val;
         else if (k === 'courts') cache.courts = val;
         else if (k === 'settings') cache.settings = val;
+        else if (k === 'waitlist') cache.waitlist = val;
 
         // Trigger existing UI listeners in both portals.
         const syncEvent = new StorageEvent('storage', {

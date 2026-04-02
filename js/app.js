@@ -11,31 +11,25 @@ window.joinWaitlist = async function () {
   const court = (Store.get('courts') || []).find(c => c.id === selection.courtId);
   const total = typeof calculateTotal === 'function' ? calculateTotal() : (court?.base_rate || 0);
 
-  const newWaitlistEntry = {
-    id: 'w_' + Date.now(),
-    court_id: selection.courtId,
-    court_name: court?.name || 'Unknown',
-    sport: court?.sport || 'General',
-    player: player,
-    user_email: Auth.get()?.user?.email || 'user@example.com',
-    date: selection.date,
-    start_time: selection.start,
-    end_time: selection.end,
-    cost: total,
-    created_at: new Date().toISOString()
-  };
+  // 1. Sync to Supabase waitlist table
+  const res = await Store.addToWaitlist(
+    selection.courtId,
+    player,
+    Auth.get()?.user?.email || 'user@example.com',
+    selection.date,
+    selection.start,
+    selection.end,
+    'none', // membership
+    0       // priority
+  );
 
-  // 1. Save to localStorage
-  let waitlist = JSON.parse(localStorage.getItem('cb_waitlist') || '[]');
-  waitlist.push(newWaitlistEntry);
-  localStorage.setItem('cb_waitlist', JSON.stringify(waitlist));
-  
-  // 2. Update Store cache so other functions can see it
-  Store.setLocal('waitlist', waitlist);
+  if (!res.success) {
+    return alert('Could not join waitlist: ' + res.error);
+  }
 
-  // 3. Show output as requested
-  console.table(waitlist);
-  alert(`Successfully joined waitlist! (Stored in LocalStorage)\n\nName: ${player}\nCourt: ${newWaitlistEntry.court_name}\nTime: ${newWaitlistEntry.start_time}\n\nTotal Waitlist Size: ${waitlist.length}`);
+  // 2. Fetch updated merged list for feedback
+  const fullWaitlist = Store.get('waitlist') || [];
+  alert(`Successfully joined waitlist!\n\nName: ${player}\nCourt: ${court.name}\nTime: ${selection.start} - ${selection.end}\n\nTotal Waitlist Size: ${fullWaitlist.length}`);
   
   window.closeWaitlist();
   
